@@ -1,108 +1,121 @@
-#include <opencv2/imgproc.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/highgui.hpp>
 #include "LibCamera.h"
 #include <vector>
 #include <algorithm>
 #include <ctime>
+#include <iostream>
+#include <fstream>
+#include <string>
 
-using namespace cv;
 using namespace std;
 
 struct ImageData {
-    Mat image;
+    uint8_t* imageData;
     double clarity;
     time_t timestamp;
+    uint32_t width;
+    uint32_t height;
 };
 
-// Function to calculate image clarity based on RGB values
-double calculateImageClarity(const Mat& image, bool isDay) {
-    Mat hsv;
-    cvtColor(image, hsv, COLOR_BGR2HSV);
+// Function to calculate image clarity based on raw RGB values
+double calculateImageClarity(uint8_t* imageData, uint32_t width, uint32_t height, bool isDay) {
+    double blue_percentage = 0.0, green_percentage = 0.0, brown_percentage = 0.0;
+    double black_percentage = 0.0, yellow_percentage = 0.0;
 
-    Scalar blue_lower(100, 50, 50), blue_upper(140, 255, 255);
-    Scalar green_lower(35, 50, 50), green_upper(85, 255, 255);
-    Scalar brown_lower(10, 50, 50), brown_upper(20, 255, 255);
+    for (uint32_t i = 0; i < height; i++) {
+        for (uint32_t j = 0; j < width; j++) {
+            int index = (i * width + j) * 3; // Assuming 3 channels (RGB)
+            uint8_t r = imageData[index];
+            uint8_t g = imageData[index + 1];
+            uint8_t b = imageData[index + 2];
 
-    Scalar black_lower(0, 0, 0), black_upper(180, 255, 50);
-    Scalar yellow_lower(20, 50, 50), yellow_upper(30, 255, 255);
+            // Check RGB values for colors
+            if (b > 100 && b < 140 && g > 50 && r < 140) {
+                blue_percentage += 1.0;
+            } else if (g > 35 && g < 85 && r < 85) {
+                green_percentage += 1.0;
+            } else if (r > 10 && r < 20) {
+                brown_percentage += 1.0;
+            } else if (r < 50 && g < 50 && b < 50) {
+                black_percentage += 1.0;
+            } else if (r > 20 && r < 30) {
+                yellow_percentage += 1.0;
+            }
+        }
+    }
 
-    Mat blue_mask, green_mask, brown_mask, black_mask, yellow_mask;
+    double total_pixels = width * height;
+    blue_percentage = (blue_percentage / total_pixels) * 100;
+    green_percentage = (green_percentage / total_pixels) * 100;
+    brown_percentage = (brown_percentage / total_pixels) * 100;
+    black_percentage = (black_percentage / total_pixels) * 100;
+    yellow_percentage = (yellow_percentage / total_pixels) * 100;
 
-    inRange(hsv, blue_lower, blue_upper, blue_mask);
-    inRange(hsv, green_lower, green_upper, green_mask);
-    inRange(hsv, brown_lower, brown_upper, brown_mask);
-    inRange(hsv, black_lower, black_upper, black_mask);
-    inRange(hsv, yellow_lower, yellow_upper, yellow_mask);
-
-    double blue_percentage = (countNonZero(blue_mask) / (double)(image.rows * image.cols)) * 100;
-    double green_percentage = (countNonZero(green_mask) / (double)(image.rows * image.cols)) * 100;
-    double brown_percentage = (countNonZero(brown_mask) / (double)(image.rows * image.cols)) * 100;
-
-    double black_percentage = (countNonZero(black_mask) / (double)(image.rows * image.cols)) * 100;
-    double yellow_percentage = (countNonZero(yellow_mask) / (double)(image.rows * image.cols)) * 100;
-
-    // For day: prioritize blue, green, and brown, penalize white (clouds)
     if (isDay) {
         return blue_percentage + green_percentage + brown_percentage;
-    }
-    // For night: prioritize yellow and black
-    else {
+    } else {
         return yellow_percentage + black_percentage;
     }
 }
 
 // Function to check if the image is a day or night image
-bool isDay(const Mat& image) {
-    Mat hsv;
-    cvtColor(image, hsv, COLOR_BGR2HSV);
+bool isDay(uint8_t* imageData, uint32_t width, uint32_t height) {
+    double blue_percentage = 0.0, green_percentage = 0.0, brown_percentage = 0.0;
+    double black_percentage = 0.0, yellow_percentage = 0.0;
 
-    Scalar blue_lower(100, 50, 50), blue_upper(140, 255, 255);
-    Scalar green_lower(35, 50, 50), green_upper(85, 255, 255);
-    Scalar brown_lower(10, 50, 50), brown_upper(20, 255, 255);
-    Scalar black_lower(0, 0, 0), black_upper(180, 255, 50);
-    Scalar yellow_lower(20, 50, 50), yellow_upper(30, 255, 255);
+    for (uint32_t i = 0; i < height; i++) {
+        for (uint32_t j = 0; j < width; j++) {
+            int index = (i * width + j) * 3;
+            uint8_t r = imageData[index];
+            uint8_t g = imageData[index + 1];
+            uint8_t b = imageData[index + 2];
 
-    Mat blue_mask, green_mask, brown_mask, black_mask, yellow_mask;
-    inRange(hsv, blue_lower, blue_upper, blue_mask);
-    inRange(hsv, green_lower, green_upper, green_mask);
-    inRange(hsv, brown_lower, brown_upper, brown_mask);
-    inRange(hsv, black_lower, black_upper, black_mask);
-    inRange(hsv, yellow_lower, yellow_upper, yellow_mask);
+            if (b > 100 && b < 140 && g > 50 && r < 140) {
+                blue_percentage += 1.0;
+            } else if (g > 35 && g < 85 && r < 85) {
+                green_percentage += 1.0;
+            } else if (r > 10 && r < 20) {
+                brown_percentage += 1.0;
+            } else if (r < 50 && g < 50 && b < 50) {
+                black_percentage += 1.0;
+            } else if (r > 20 && r < 30) {
+                yellow_percentage += 1.0;
+            }
+        }
+    }
 
-    double blue_percentage = (countNonZero(blue_mask) / (double)(image.rows * image.cols)) * 100;
-    double green_percentage = (countNonZero(green_mask) / (double)(image.rows * image.cols)) * 100;
-    double brown_percentage = (countNonZero(brown_mask) / (double)(image.rows * image.cols)) * 100;
+    double total_pixels = width * height;
+    blue_percentage = (blue_percentage / total_pixels) * 100;
+    green_percentage = (green_percentage / total_pixels) * 100;
+    brown_percentage = (brown_percentage / total_pixels) * 100;
+    black_percentage = (black_percentage / total_pixels) * 100;
+    yellow_percentage = (yellow_percentage / total_pixels) * 100;
 
-    double black_percentage = (countNonZero(black_mask) / (double)(image.rows * image.cols)) * 100;
-    double yellow_percentage = (countNonZero(yellow_mask) / (double)(image.rows * image.cols)) * 100;
-
-    double day_color_percentage = blue_percentage + green_percentage + brown_percentage;
-    double night_color_percentage = black_percentage + yellow_percentage;
-
-    return day_color_percentage > night_color_percentage;
+    return (blue_percentage + green_percentage + brown_percentage) > (black_percentage + yellow_percentage);
 }
 
-void updateTopImages(vector<ImageData>& topImages, const Mat& image, double clarity, time_t timestamp) {
+void updateTopImages(vector<ImageData>& topImages, uint8_t* imageData, double clarity, time_t timestamp, uint32_t width, uint32_t height) {
     if (topImages.size() < 5) {
-        topImages.push_back({image, clarity, timestamp});
+        topImages.push_back({imageData, clarity, timestamp, width, height});
     } else {
         auto minElement = min_element(topImages.begin(), topImages.end(), 
                                       [](const ImageData& a, const ImageData& b) {
                                           return a.clarity < b.clarity;
                                       });
         if (clarity > minElement->clarity) {
-            *minElement = {image, clarity, timestamp};
+            *minElement = {imageData, clarity, timestamp, width, height};
         }
     }
 }
 
+// Save the raw image data to a file
+void saveImage(const ImageData& imgData, const string& filename) {
+    ofstream file(filename, ios::binary);
+    file.write(reinterpret_cast<const char*>(imgData.imageData), imgData.width * imgData.height * 3);
+    file.close();
+}
+
 int main() {
     time_t start_time = time(0);
-    int frame_count = 0;
-    float lens_position = 100;
-    float focus_step = 50;
     LibCamera cam;
     uint32_t width = 1920;
     uint32_t height = 1080;
@@ -132,38 +145,35 @@ int main() {
             if (!cam.readFrame(&frameData))
                 continue;
 
-            Mat image(height, width, CV_8UC3, frameData.imageData, stride);
-            bool day = isDay(image);
-            double clarity = calculateImageClarity(image, day);
+            bool day = isDay(frameData.imageData, width, height);
+            double clarity = calculateImageClarity(frameData.imageData, width, height, day);
 
             if (day) {
-                updateTopImages(topDayImages, image, clarity, time(0));
+                updateTopImages(topDayImages, frameData.imageData, clarity, time(0), width, height);
             } else {
-                updateTopImages(topNightImages, image, clarity, time(0));
+                updateTopImages(topNightImages, frameData.imageData, clarity, time(0), width, height);
             }
 
-            imshow("libcamera-demo", image);
-            key = waitKey(1);
+            key = getchar();
             if (key == 'q') break;
 
             cam.returnFrameBuffer(frameData);
         }
 
         cam.stopCamera();
-        destroyAllWindows();
     }
 
     cam.closeCamera();
 
     // Saving top images after 90 minutes
     for (int i = 0; i < topDayImages.size(); ++i) {
-        string filename = "day_image_" + to_string(i) + ".jpg";
-        imwrite(filename, topDayImages[i].image);
+        string filename = "day_image_" + to_string(i) + ".raw";
+        saveImage(topDayImages[i], filename);
     }
 
     for (int i = 0; i < topNightImages.size(); ++i) {
-        string filename = "night_image_" + to_string(i) + ".jpg";
-        imwrite(filename, topNightImages[i].image);
+        string filename = "night_image_" + to_string(i) + ".raw";
+        saveImage(topNightImages[i], filename);
     }
 
     return 0;
