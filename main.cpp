@@ -1,67 +1,99 @@
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <ctime>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/highgui.hpp>
 #include "LibCamera.h"
+#include <vector>
+#include <algorithm>
+#include <ctime>
 
+using namespace cv;
 using namespace std;
 
 struct ImageData {
-    vector<unsigned char> image;
+    Mat image;
     double clarity;
     time_t timestamp;
 };
 
-// Function to save raw image data as a BMP file
-void saveBmpImage(const string& filename, const unsigned char* data, int width, int height) {
-    int fileSize = 54 + 3 * width * height;
-    unsigned char bmpFileHeader[14] = {'B', 'M', 0, 0, 0, 0, 54, 0, 0, 0, 40, 0, 0, 0};
-    unsigned char bmpInfoHeader[40] = {40, 0, 0, 0, width, 0, 0, 0, height, 0, 0, 0, 1, 0, 24, 0};
+// Function to calculate image clarity based on RGB values
+double calculateImageClarity(const Mat& image, bool isDay) {
+    Mat hsv;
+    cvtColor(image, hsv, COLOR_BGR2HSV);
 
-    bmpFileHeader[2] = (fileSize & 0xFF);
-    bmpFileHeader[3] = ((fileSize >> 8) & 0xFF);
-    bmpFileHeader[4] = ((fileSize >> 16) & 0xFF);
-    bmpFileHeader[5] = ((fileSize >> 24) & 0xFF);
+    Scalar blue_lower(100, 50, 50), blue_upper(140, 255, 255);
+    Scalar green_lower(35, 50, 50), green_upper(85, 255, 255);
+    Scalar brown_lower(10, 50, 50), brown_upper(20, 255, 255);
 
-    bmpInfoHeader[4] = (width & 0xFF);
-    bmpInfoHeader[5] = ((width >> 8) & 0xFF);
-    bmpInfoHeader[6] = ((width >> 16) & 0xFF);
-    bmpInfoHeader[7] = ((width >> 24) & 0xFF);
+    Scalar black_lower(0, 0, 0), black_upper(180, 255, 50);
+    Scalar yellow_lower(20, 50, 50), yellow_upper(30, 255, 255);
 
-    bmpInfoHeader[8] = (height & 0xFF);
-    bmpInfoHeader[9] = ((height >> 8) & 0xFF);
-    bmpInfoHeader[10] = ((height >> 16) & 0xFF);
-    bmpInfoHeader[11] = ((height >> 24) & 0xFF);
+    Mat blue_mask, green_mask, brown_mask, black_mask, yellow_mask;
 
-    ofstream file(filename, ios::binary);
-    file.write(reinterpret_cast<char*>(bmpFileHeader), 14);
-    file.write(reinterpret_cast<char*>(bmpInfoHeader), 40);
-    file.write(reinterpret_cast<const char*>(data), 3 * width * height);
+    inRange(hsv, blue_lower, blue_upper, blue_mask);
+    inRange(hsv, green_lower, green_upper, green_mask);
+    inRange(hsv, brown_lower, brown_upper, brown_mask);
+    inRange(hsv, black_lower, black_upper, black_mask);
+    inRange(hsv, yellow_lower, yellow_upper, yellow_mask);
+
+    double blue_percentage = (countNonZero(blue_mask) / (double)(image.rows * image.cols)) * 100;
+    double green_percentage = (countNonZero(green_mask) / (double)(image.rows * image.cols)) * 100;
+    double brown_percentage = (countNonZero(brown_mask) / (double)(image.rows * image.cols)) * 100;
+
+    double black_percentage = (countNonZero(black_mask) / (double)(image.rows * image.cols)) * 100;
+    double yellow_percentage = (countNonZero(yellow_mask) / (double)(image.rows * image.cols)) * 100;
+
+    // For day: prioritize blue, green, and brown, penalize white (clouds)
+    if (isDay) {
+        return blue_percentage + green_percentage + brown_percentage;
+    }
+    // For night: prioritize yellow and black
+    else {
+        return yellow_percentage + black_percentage;
+    }
 }
 
-// Function to calculate image clarity (dummy implementation)
-double calculateImageClarity(const unsigned char* image, int width, int height, bool isDay) {
-    // Implement your clarity calculation here
-    return 0.0;  // Placeholder for clarity calculation
+// Function to check if the image is a day or night image
+bool isDay(const Mat& image) {
+    Mat hsv;
+    cvtColor(image, hsv, COLOR_BGR2HSV);
+
+    Scalar blue_lower(100, 50, 50), blue_upper(140, 255, 255);
+    Scalar green_lower(35, 50, 50), green_upper(85, 255, 255);
+    Scalar brown_lower(10, 50, 50), brown_upper(20, 255, 255);
+    Scalar black_lower(0, 0, 0), black_upper(180, 255, 50);
+    Scalar yellow_lower(20, 50, 50), yellow_upper(30, 255, 255);
+
+    Mat blue_mask, green_mask, brown_mask, black_mask, yellow_mask;
+    inRange(hsv, blue_lower, blue_upper, blue_mask);
+    inRange(hsv, green_lower, green_upper, green_mask);
+    inRange(hsv, brown_lower, brown_upper, brown_mask);
+    inRange(hsv, black_lower, black_upper, black_mask);
+    inRange(hsv, yellow_lower, yellow_upper, yellow_mask);
+
+    double blue_percentage = (countNonZero(blue_mask) / (double)(image.rows * image.cols)) * 100;
+    double green_percentage = (countNonZero(green_mask) / (double)(image.rows * image.cols)) * 100;
+    double brown_percentage = (countNonZero(brown_mask) / (double)(image.rows * image.cols)) * 100;
+
+    double black_percentage = (countNonZero(black_mask) / (double)(image.rows * image.cols)) * 100;
+    double yellow_percentage = (countNonZero(yellow_mask) / (double)(image.rows * image.cols)) * 100;
+
+    double day_color_percentage = blue_percentage + green_percentage + brown_percentage;
+    double night_color_percentage = black_percentage + yellow_percentage;
+
+    return day_color_percentage > night_color_percentage;
 }
 
-// Function to check if the image is a day or night image (dummy implementation)
-bool isDay(const unsigned char* image, int width, int height) {
-    // Implement your day/night detection logic here
-    return true;  // Placeholder for day/night detection
-}
-
-// Function to update top images based on clarity
-void updateTopImages(vector<ImageData>& topImages, const unsigned char* image, double clarity, time_t timestamp, int width, int height) {
+void updateTopImages(vector<ImageData>& topImages, const Mat& image, double clarity, time_t timestamp) {
     if (topImages.size() < 5) {
-        topImages.push_back({vector<unsigned char>(image, image + 3 * width * height), clarity, timestamp});
+        topImages.push_back({image, clarity, timestamp});
     } else {
-        auto minElement = min_element(topImages.begin(), topImages.end(),
+        auto minElement = min_element(topImages.begin(), topImages.end(), 
                                       [](const ImageData& a, const ImageData& b) {
                                           return a.clarity < b.clarity;
                                       });
         if (clarity > minElement->clarity) {
-            *minElement = {vector<unsigned char>(image, image + 3 * width * height), clarity, timestamp};
+            *minElement = {image, clarity, timestamp};
         }
     }
 }
@@ -69,6 +101,8 @@ void updateTopImages(vector<ImageData>& topImages, const unsigned char* image, d
 int main() {
     time_t start_time = time(0);
     int frame_count = 0;
+    float lens_position = 100;
+    float focus_step = 50;
     LibCamera cam;
     uint32_t width = 1920;
     uint32_t height = 1080;
@@ -98,38 +132,38 @@ int main() {
             if (!cam.readFrame(&frameData))
                 continue;
 
-            // Convert frame data to raw image format
-            unsigned char* imageData = frameData.imageData;
-            bool day = isDay(imageData, width, height);
-            double clarity = calculateImageClarity(imageData, width, height, day);
+            Mat image(height, width, CV_8UC3, frameData.imageData, stride);
+            bool day = isDay(image);
+            double clarity = calculateImageClarity(image, day);
 
             if (day) {
-                updateTopImages(topDayImages, imageData, clarity, time(0), width, height);
+                updateTopImages(topDayImages, image, clarity, time(0));
             } else {
-                updateTopImages(topNightImages, imageData, clarity, time(0), width, height);
+                updateTopImages(topNightImages, image, clarity, time(0));
             }
 
-            // Display image
-            // Assuming you have a way to display raw image data in your environment
-            // e.g., using a library or custom display function
+            imshow("libcamera-demo", image);
+            key = waitKey(1);
+            if (key == 'q') break;
 
             cam.returnFrameBuffer(frameData);
         }
 
         cam.stopCamera();
+        destroyAllWindows();
     }
 
     cam.closeCamera();
 
-    // Save top images after 90 minutes
+    // Saving top images after 90 minutes
     for (int i = 0; i < topDayImages.size(); ++i) {
-        string filename = "day_image_" + to_string(i) + ".bmp";
-        saveBmpImage(filename, topDayImages[i].image.data(), width, height);
+        string filename = "day_image_" + to_string(i) + ".jpg";
+        imwrite(filename, topDayImages[i].image);
     }
 
     for (int i = 0; i < topNightImages.size(); ++i) {
-        string filename = "night_image_" + to_string(i) + ".bmp";
-        saveBmpImage(filename, topNightImages[i].image.data(), width, height);
+        string filename = "night_image_" + to_string(i) + ".jpg";
+        imwrite(filename, topNightImages[i].image);
     }
 
     return 0;
