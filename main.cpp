@@ -12,37 +12,88 @@ using namespace std;
 
 struct ImageData {
     Mat image;
-    double quality;
+    double clarity;
     time_t timestamp;
 };
 
-double calculateImageQuality(const Mat& image) {
-    Mat gray, laplacian;
-    cvtColor(image, gray, COLOR_BGR2GRAY);
-    Laplacian(gray, laplacian, CV_64F);
-    Scalar mean, stddev;
-    meanStdDev(laplacian, mean, stddev);
-    return stddev[0] * stddev[0];  // Variance of the Laplacian
+// Function to calculate image clarity based on RGB values
+double calculateImageClarity(const Mat& image, bool isDay) {
+    Mat hsv;
+    cvtColor(image, hsv, COLOR_BGR2HSV);
+
+    Scalar blue_lower(100, 50, 50), blue_upper(140, 255, 255);
+    Scalar green_lower(35, 50, 50), green_upper(85, 255, 255);
+    Scalar brown_lower(10, 50, 50), brown_upper(20, 255, 255);
+
+    Scalar black_lower(0, 0, 0), black_upper(180, 255, 50);
+    Scalar yellow_lower(20, 50, 50), yellow_upper(30, 255, 255);
+
+    Mat blue_mask, green_mask, brown_mask, black_mask, yellow_mask;
+
+    inRange(hsv, blue_lower, blue_upper, blue_mask);
+    inRange(hsv, green_lower, green_upper, green_mask);
+    inRange(hsv, brown_lower, brown_upper, brown_mask);
+    inRange(hsv, black_lower, black_upper, black_mask);
+    inRange(hsv, yellow_lower, yellow_upper, yellow_mask);
+
+    double blue_percentage = (countNonZero(blue_mask) / (double)(image.rows * image.cols)) * 100;
+    double green_percentage = (countNonZero(green_mask) / (double)(image.rows * image.cols)) * 100;
+    double brown_percentage = (countNonZero(brown_mask) / (double)(image.rows * image.cols)) * 100;
+
+    double black_percentage = (countNonZero(black_mask) / (double)(image.rows * image.cols)) * 100;
+    double yellow_percentage = (countNonZero(yellow_mask) / (double)(image.rows * image.cols)) * 100;
+
+    // For day: prioritize blue, green, and brown, penalize white (clouds)
+    if (isDay) {
+        return blue_percentage + green_percentage + brown_percentage;
+    }
+    // For night: prioritize yellow and black
+    else {
+        return yellow_percentage + black_percentage;
+    }
 }
 
+// Function to check if the image is a day or night image
 bool isDay(const Mat& image) {
-    Mat gray;
-    cvtColor(image, gray, COLOR_BGR2GRAY);
-    Scalar meanVal = mean(gray);
-    return meanVal[0] > 100;  // Adjust threshold based on lighting conditions
+    Mat hsv;
+    cvtColor(image, hsv, COLOR_BGR2HSV);
+
+    Scalar blue_lower(100, 50, 50), blue_upper(140, 255, 255);
+    Scalar green_lower(35, 50, 50), green_upper(85, 255, 255);
+    Scalar brown_lower(10, 50, 50), brown_upper(20, 255, 255);
+    Scalar black_lower(0, 0, 0), black_upper(180, 255, 50);
+    Scalar yellow_lower(20, 50, 50), yellow_upper(30, 255, 255);
+
+    Mat blue_mask, green_mask, brown_mask, black_mask, yellow_mask;
+    inRange(hsv, blue_lower, blue_upper, blue_mask);
+    inRange(hsv, green_lower, green_upper, green_mask);
+    inRange(hsv, brown_lower, brown_upper, brown_mask);
+    inRange(hsv, black_lower, black_upper, black_mask);
+    inRange(hsv, yellow_lower, yellow_upper, yellow_mask);
+
+    double blue_percentage = (countNonZero(blue_mask) / (double)(image.rows * image.cols)) * 100;
+    double green_percentage = (countNonZero(green_mask) / (double)(image.rows * image.cols)) * 100;
+    double brown_percentage = (countNonZero(brown_mask) / (double)(image.rows * image.cols)) * 100;
+
+    double black_percentage = (countNonZero(black_mask) / (double)(image.rows * image.cols)) * 100;
+    double yellow_percentage = (countNonZero(yellow_mask) / (double)(image.rows * image.cols)) * 100;
+
+    double day_color_percentage = blue_percentage + green_percentage + brown_percentage;
+    double night_color_percentage = black_percentage + yellow_percentage;
+
+    return day_color_percentage > night_color_percentage;
 }
 
-void updateTopImages(vector<ImageData>& topImages, const Mat& image, double quality, time_t timestamp) {
+void updateTopImages(vector<ImageData>& topImages, const Mat& image, double clarity, time_t timestamp) {
     if (topImages.size() < 5) {
-        topImages.push_back({image, quality, timestamp});
+        topImages.push_back({image, clarity, timestamp});
     } else {
-        // Replace the lowest quality image if the new one is better
         auto minElement = min_element(topImages.begin(), topImages.end(), 
                                       [](const ImageData& a, const ImageData& b) {
-                                          return a.quality < b.quality;
+                                          return a.clarity < b.clarity;
                                       });
-        if (quality > minElement->quality) {
-            *minElement = {image, quality, timestamp};
+        if (clarity > minElement->clarity) {
+            *minElement = {image, clarity, timestamp};
         }
     }
 }
@@ -82,12 +133,13 @@ int main() {
                 continue;
 
             Mat image(height, width, CV_8UC3, frameData.imageData, stride);
-            double quality = calculateImageQuality(image);
+            bool day = isDay(image);
+            double clarity = calculateImageClarity(image, day);
 
-            if (isDay(image)) {
-                updateTopImages(topDayImages, image, quality, time(0));
+            if (day) {
+                updateTopImages(topDayImages, image, clarity, time(0));
             } else {
-                updateTopImages(topNightImages, image, quality, time(0));
+                updateTopImages(topNightImages, image, clarity, time(0));
             }
 
             imshow("libcamera-demo", image);
