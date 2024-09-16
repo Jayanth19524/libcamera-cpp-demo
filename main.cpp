@@ -2,10 +2,50 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
-
 #include "LibCamera.h"
+#include <vector>
+#include <algorithm>
+#include <ctime>
 
 using namespace cv;
+using namespace std;
+
+struct ImageData {
+    Mat image;
+    double quality;
+    time_t timestamp;
+};
+
+double calculateImageQuality(const Mat& image) {
+    Mat gray, laplacian;
+    cvtColor(image, gray, COLOR_BGR2GRAY);
+    Laplacian(gray, laplacian, CV_64F);
+    Scalar mean, stddev;
+    meanStdDev(laplacian, mean, stddev);
+    return stddev[0] * stddev[0];  // Variance of the Laplacian
+}
+
+bool isDay(const Mat& image) {
+    Mat gray;
+    cvtColor(image, gray, COLOR_BGR2GRAY);
+    Scalar meanVal = mean(gray);
+    return meanVal[0] > 100;  // Adjust threshold based on lighting conditions
+}
+
+void updateTopImages(vector<ImageData>& topImages, const Mat& image, double quality, time_t timestamp) {
+    if (topImages.size() < 5) {
+        topImages.push_back({image, quality, timestamp});
+    } else {
+        // Replace the lowest quality image if the new one is better
+        auto minElement = min_element(topImages.begin(), topImages.end(), 
+                                      [](const ImageData& a, const ImageData& b) {
+                                          return a.quality < b.quality;
+                                      });
+        if (quality > minElement->quality) {
+            *minElement = {image, quality, timestamp};
+        }
+    }
+}
 
 int main() {
     time_t start_time = time(0);
@@ -17,73 +57,62 @@ int main() {
     uint32_t height = 1080;
     uint32_t stride;
     char key;
-    int window_width = 1920;
-    int window_height = 1080;
 
-    if (width > window_width)
-    {
-        cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
-        cv::resizeWindow("libcamera-demo", window_width, window_height);
-    } 
+    vector<ImageData> topDayImages;
+    vector<ImageData> topNightImages;
 
-    int ret = cam.initCamera();
+    cam.initCamera();
     cam.configureStill(width, height, formats::RGB888, 1, 0);
     ControlList controls_;
-    int64_t frame_time = 1000000 / 10;
-    // Set frame rate
-	controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
-    // Adjust the brightness of the output images, in the range -1.0 to 1.0
+    int64_t frame_time = 1000000 / 24;  // 24 FPS
+    controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
     controls_.set(controls::Brightness, 0.5);
-    // Adjust the contrast of the output image, where 1.0 = normal contrast
     controls_.set(controls::Contrast, 1.5);
-    // Set the exposure time
     controls_.set(controls::ExposureTime, 20000);
     cam.set(controls_);
-    if (!ret) {
-        bool flag;
+
+    if (!cam.startCamera()) {
         LibcameraOutData frameData;
-        cam.startCamera();
         cam.VideoStream(&width, &height, &stride);
-        while (true) {
-            flag = cam.readFrame(&frameData);
-            if (!flag)
+        time_t current_time = time(0);
+        time_t end_time = current_time + 90 * 60;  // 90 minutes
+
+        while (time(0) < end_time) {
+            if (!cam.readFrame(&frameData))
                 continue;
-            Mat im(height, width, CV_8UC3, frameData.imageData, stride);
 
-            imshow("libcamera-demo", im);
+            Mat image(height, width, CV_8UC3, frameData.imageData, stride);
+            double quality = calculateImageQuality(image);
+
+            if (isDay(image)) {
+                updateTopImages(topDayImages, image, quality, time(0));
+            } else {
+                updateTopImages(topNightImages, image, quality, time(0));
+            }
+
+            imshow("libcamera-demo", image);
             key = waitKey(1);
-            if (key == 'q') {
-                break;
-            } else if (key == 'f') {
-                ControlList controls;
-                controls.set(controls::AfMode, controls::AfModeAuto);
-                controls.set(controls::AfTrigger, 0);
-                cam.set(controls);
-            } else if (key == 'a' || key == 'A') {
-                lens_position += focus_step;
-            } else if (key == 'd' || key == 'D') {
-                lens_position -= focus_step;
-            }
+            if (key == 'q') break;
 
-            // To use the manual focus function, libcamera-dev needs to be updated to version 0.0.10 and above.
-            if (key == 'a' || key == 'A' || key == 'd' || key == 'D') {
-                ControlList controls;
-                controls.set(controls::AfMode, controls::AfModeManual);
-				controls.set(controls::LensPosition, lens_position);
-                cam.set(controls);
-            }
-
-            frame_count++;
-            if ((time(0) - start_time) >= 1){
-                printf("fps: %d\n", frame_count);
-                frame_count = 0;
-                start_time = time(0);
-            }
             cam.returnFrameBuffer(frameData);
         }
-        destroyAllWindows();
+
         cam.stopCamera();
+        destroyAllWindows();
     }
+
     cam.closeCamera();
+
+    // Saving top images after 90 minutes
+    for (int i = 0; i < topDayImages.size(); ++i) {
+        string filename = "day_image_" + to_string(i) + ".jpg";
+        imwrite(filename, topDayImages[i].image);
+    }
+
+    for (int i = 0; i < topNightImages.size(); ++i) {
+        string filename = "night_image_" + to_string(i) + ".jpg";
+        imwrite(filename, topNightImages[i].image);
+    }
+
     return 0;
 }
