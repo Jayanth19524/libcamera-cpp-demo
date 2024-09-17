@@ -2,8 +2,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
-#include <vector>
-#include <algorithm>
+#include <array>
 
 #include "LibCamera.h"
 
@@ -27,7 +26,8 @@ int main() {
     int window_width = 1920;
     int window_height = 1080;
 
-    std::vector<FrameInfo> blueFrames; // To store frames and their blue intensities
+    std::array<FrameInfo, 5> topFrames; // Array to hold the top 5 frames
+    std::fill(topFrames.begin(), topFrames.end(), FrameInfo{Mat(), 0.0}); // Initialize with default values
 
     if (width > window_width)
     {
@@ -40,7 +40,7 @@ int main() {
     ControlList controls_;
     int64_t frame_time = 1000000 / 10;
     // Set frame rate
-	controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
+    controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
     controls_.set(controls::Brightness, 0.5);
     controls_.set(controls::Contrast, 1.5);
     controls_.set(controls::ExposureTime, 20000);
@@ -66,8 +66,13 @@ int main() {
             blueChannel = channels[0];
             double blueSum = sum(blueChannel)[0];  // Sum of blue pixels
 
-            // Store the image and its blue sum
-            blueFrames.push_back({ im.clone(), blueSum });
+            // Check if the current frame should be in the top 5
+            auto minElement = std::min_element(topFrames.begin(), topFrames.end(), 
+                [](const FrameInfo& a, const FrameInfo& b) { return a.blueSum < b.blueSum; });
+            
+            if (blueSum > minElement->blueSum) {
+                *minElement = { im.clone(), blueSum }; // Replace the frame with the new one
+            }
 
             imshow("libcamera-demo", im);
             key = waitKey(1);
@@ -100,16 +105,13 @@ int main() {
             cam.returnFrameBuffer(frameData);
         }
 
-        // Sort frames by blue intensity in descending order
-        std::sort(blueFrames.begin(), blueFrames.end(), [](const FrameInfo& a, const FrameInfo& b) {
-            return a.blueSum > b.blueSum;
-        });
-
-        // Save top 5 frames with the highest blue content as jpg
-        for (int i = 0; i < 5 && i < blueFrames.size(); i++) {
-            std::string filename = "blue_frame_" + std::to_string(i+1) + ".jpg";
-            imwrite(filename, blueFrames[i].image);
-            std::cout << "Saved " << filename << " with blue intensity: " << blueFrames[i].blueSum << std::endl;
+        // Save the top 5 frames with the highest blue content as jpg
+        for (int i = 0; i < 5; i++) {
+            if (!topFrames[i].image.empty()) {
+                std::string filename = "blue_frame_" + std::to_string(i+1) + ".jpg";
+                imwrite(filename, topFrames[i].image);
+                std::cout << "Saved " << filename << " with blue intensity: " << topFrames[i].blueSum << std::endl;
+            }
         }
 
         destroyAllWindows();
