@@ -11,10 +11,8 @@ using namespace std;
 
 // Utility function to convert YUV420 to RGB
 cv::Mat yuv420ToRgb(const unsigned char *yuv, int width, int height) {
-    // Create a cv::Mat for YUV420
     cv::Mat yuvImg(height + height / 2, width, CV_8UC1, (void *)yuv);
     cv::Mat rgbImg;
-    // Convert YUV420 to RGB
     cv::cvtColor(yuvImg, rgbImg, cv::COLOR_YUV420p2RGB);
     return rgbImg;
 }
@@ -22,11 +20,9 @@ cv::Mat yuv420ToRgb(const unsigned char *yuv, int width, int height) {
 class FrameCapture {
 public:
     FrameCapture() {
-        // Create CameraManager
-        cameraManager = CameraManager::create();
+        cameraManager = make_unique<CameraManager>();
         cameraManager->start();
-        
-        // Get the first camera
+
         auto cameras = cameraManager->cameras();
         if (cameras.empty()) {
             cerr << "No cameras found" << endl;
@@ -34,13 +30,11 @@ public:
         }
         camera = cameras[0];
 
-        // Initialize the camera
         if (camera->acquire()) {
             cerr << "Failed to acquire camera" << endl;
             exit(1);
         }
 
-        // Configure the camera
         configureCamera();
     }
 
@@ -62,9 +56,9 @@ public:
     }
 
 private:
-    std::unique_ptr<CameraManager> cameraManager;
-    Camera *camera;
-    std::unique_ptr<CameraConfiguration> cameraConfig;
+    unique_ptr<CameraManager> cameraManager;
+    shared_ptr<Camera> camera;
+    unique_ptr<CameraConfiguration> cameraConfig;
     FrameBufferAllocator allocator;
 
     void configureCamera() {
@@ -81,6 +75,7 @@ private:
         cameraConfig->validate();
         camera->configure(cameraConfig.get());
 
+        allocator = FrameBufferAllocator(camera);
         allocator.allocate(cameraConfig->streams());
     }
 
@@ -91,19 +86,18 @@ private:
             return;
         }
 
-        auto buffer = allocator.get(cameraConfig->streams().at(0)->stream()).front();
-        request->addBuffer(cameraConfig->streams().at(0)->stream(), buffer);
+        auto buffer = allocator.buffers(cameraConfig->streams().at(0)).front();
+        request->addBuffer(cameraConfig->streams().at(0), buffer);
         camera->queueRequest(request);
 
-        // Start the camera to process the request
         camera->start();
         auto completedRequest = camera->waitForRequest();
         camera->stop();
 
         if (completedRequest->status() == Request::RequestCompleted) {
-            auto yuvBuffer = request->buffers().at(0)->planes()[0].mem();
-            auto width = cameraConfig->streams().at(0)->configuration().size.width;
-            auto height = cameraConfig->streams().at(0)->configuration().size.height;
+            auto yuvBuffer = request->buffers().at(0)->planes().at(0).mem();
+            auto width = cameraConfig->at(0).size.width;
+            auto height = cameraConfig->at(0).size.height;
             
             // Convert YUV420 to RGB
             cv::Mat rgbFrame = yuv420ToRgb(yuvBuffer, width, height);
