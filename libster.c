@@ -5,16 +5,26 @@ int main(int argc, char *argv[]) {
     libcamera::CameraManager cameraManager;
 
     // Start the Camera Manager
-    cameraManager.start();
+    int ret = cameraManager.start();
+    if (ret) {
+        printf("Failed to start Camera Manager\n");
+        return -1;
+    }
 
-    // Get available cameras
+    // Check available cameras
     if (cameraManager.cameras().empty()) {
         printf("No cameras available\n");
         return -1;
     }
 
-    // Get the first camera
-    std::shared_ptr<libcamera::Camera> camera = cameraManager.get("camera_0");
+    // List available cameras
+    printf("Available cameras:\n");
+    for (const auto &cam : cameraManager.cameras()) {
+        printf("Camera ID: %s\n", cam->id().c_str());
+    }
+
+    // Get the first camera by using the actual camera ID
+    std::shared_ptr<libcamera::Camera> camera = cameraManager.get(cameraManager.cameras()[0]->id());
 
     if (!camera) {
         printf("Failed to get camera\n");
