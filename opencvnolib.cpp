@@ -1,10 +1,7 @@
 #include <libcamera/libcamera.h>
 #include <libcamera/controls.h>
 #include <libcamera/framebuffer_allocator.h>
-#include <libcamera/camera_configuration.h>
 #include <iostream>
-#include <fstream>
-#include <sstream>
 #include <thread>
 #include <chrono>
 #include <opencv2/opencv.hpp>
@@ -88,15 +85,21 @@ private:
     }
 
     void captureFrame(int frameCount) {
-        camera->start();
+        auto request = camera->createRequest();
+        if (!request) {
+            cerr << "Failed to create request" << endl;
+            return;
+        }
 
         auto buffer = allocator.get(cameraConfig->streams().at(0)->stream()).front();
-        auto request = camera->createRequest();
         request->addBuffer(cameraConfig->streams().at(0)->stream(), buffer);
         camera->queueRequest(request);
 
-        // Wait for a frame to be available
+        // Start the camera to process the request
+        camera->start();
         auto completedRequest = camera->waitForRequest();
+        camera->stop();
+
         if (completedRequest->status() == Request::RequestCompleted) {
             auto yuvBuffer = request->buffers().at(0)->planes()[0].mem();
             auto width = cameraConfig->streams().at(0)->configuration().size.width;
@@ -113,8 +116,6 @@ private:
         } else {
             cerr << "Failed to capture frame" << endl;
         }
-
-        camera->stop();
     }
 };
 
