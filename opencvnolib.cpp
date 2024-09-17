@@ -1,9 +1,7 @@
 #include <libcamera/libcamera.h>
 #include <libcamera/controls.h>
 #include <libcamera/framebuffer_allocator.h>
-#include <libcamera/stream.h>
-#include <libcamera/stream_configuration.h>
-#include <libcamera/stream_config.h>
+#include <libcamera/camera_configuration.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -16,7 +14,6 @@ using namespace std;
 
 // Utility function to convert YUV420 to RGB
 cv::Mat yuv420ToRgb(const unsigned char *yuv, int width, int height) {
-    // YUV420 format consists of Y, U, and V planes
     // Create a cv::Mat for YUV420
     cv::Mat yuvImg(height + height / 2, width, CV_8UC1, (void *)yuv);
     cv::Mat rgbImg;
@@ -70,9 +67,8 @@ public:
 private:
     std::unique_ptr<CameraManager> cameraManager;
     Camera *camera;
-    CameraConfiguration *cameraConfig;
+    std::unique_ptr<CameraConfiguration> cameraConfig;
     FrameBufferAllocator allocator;
-    std::vector<StreamConfiguration> configurations;
 
     void configureCamera() {
         cameraConfig = camera->generateConfiguration({ StreamRole::Viewfinder });
@@ -81,14 +77,12 @@ private:
             exit(1);
         }
 
-        configurations = cameraConfig->get();
-        for (auto &cfg : configurations) {
-            cfg.size = { 640, 480 };  // Set resolution to 640x480
-            cfg.pixelFormat = formats::YUV420;  // Capture in YUV420
-        }
+        auto &streamConfig = cameraConfig->at(0);
+        streamConfig.size = { 640, 480 };  // Set resolution to 640x480
+        streamConfig.pixelFormat = formats::YUV420;  // Capture in YUV420
 
         cameraConfig->validate();
-        camera->configure(cameraConfig);
+        camera->configure(cameraConfig.get());
 
         allocator.allocate(cameraConfig->streams());
     }
