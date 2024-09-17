@@ -2,7 +2,8 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
-#include <array>
+#include <iostream>
+#include <ctime>
 
 #include "LibCamera.h"
 
@@ -15,6 +16,7 @@ struct FrameInfo {
 
 int main() {
     time_t start_time = time(0);
+    time_t current_time;
     int frame_count = 0;
     float lens_position = 100;
     float focus_step = 50;
@@ -26,11 +28,10 @@ int main() {
     int window_width = 1920;
     int window_height = 1080;
 
-    std::array<FrameInfo, 5> topFrames; // Array to hold the top 5 frames
-    std::fill(topFrames.begin(), topFrames.end(), FrameInfo{Mat(), 0.0}); // Initialize with default values
+    // Initialize top 5 values
+    FrameInfo topFrames[5] = { {Mat(), -1.0}, {Mat(), -1.0}, {Mat(), -1.0}, {Mat(), -1.0}, {Mat(), -1.0} };
 
-    if (width > window_width)
-    {
+    if (width > window_width) {
         cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
         cv::resizeWindow("libcamera-demo", window_width, window_height);
     }
@@ -39,39 +40,48 @@ int main() {
     cam.configureStill(width, height, formats::RGB888, 1, 0);
     ControlList controls_;
     int64_t frame_time = 1000000 / 10;
-    // Set frame rate
     controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
     controls_.set(controls::Brightness, 0.5);
     controls_.set(controls::Contrast, 1.5);
     controls_.set(controls::ExposureTime, 20000);
     cam.set(controls_);
-    
+
     if (!ret) {
         bool flag;
         LibcameraOutData frameData;
         cam.startCamera();
         cam.VideoStream(&width, &height, &stride);
-        
-        while ((time(0) - start_time) < 30) { // Run camera for 30 seconds
+
+        while (true) {
+            current_time = time(0);
+            if ((current_time - start_time) >= 30) {
+                break; // Exit loop after 30 seconds
+            }
+
             flag = cam.readFrame(&frameData);
             if (!flag)
                 continue;
 
             Mat im(height, width, CV_8UC3, frameData.imageData, stride);
 
-            // Extract the blue channel and calculate the sum of blue values
             Mat blueChannel;
             std::vector<Mat> channels(3);
             split(im, channels);
             blueChannel = channels[0];
-            double blueSum = sum(blueChannel)[0];  // Sum of blue pixels
+            double blueSum = sum(blueChannel)[0];
 
-            // Check if the current frame should be in the top 5
-            auto minElement = std::min_element(topFrames.begin(), topFrames.end(), 
-                [](const FrameInfo& a, const FrameInfo& b) { return a.blueSum < b.blueSum; });
-            
-            if (blueSum > minElement->blueSum) {
-                *minElement = { im.clone(), blueSum }; // Replace the frame with the new one
+            // Find the smallest blueSum in topFrames
+            int minIndex = 0;
+            for (int i = 1; i < 5; ++i) {
+                if (topFrames[i].blueSum < topFrames[minIndex].blueSum) {
+                    minIndex = i;
+                }
+            }
+
+            // Replace the frame if the new blueSum is larger
+            if (blueSum > topFrames[minIndex].blueSum) {
+                topFrames[minIndex].image = im.clone();
+                topFrames[minIndex].blueSum = blueSum;
             }
 
             imshow("libcamera-demo", im);
@@ -97,10 +107,10 @@ int main() {
             }
 
             frame_count++;
-            if ((time(0) - start_time) >= 1) {
+            if ((current_time - start_time) >= 1) {
                 printf("fps: %d\n", frame_count);
                 frame_count = 0;
-                start_time = time(0);
+                start_time = time(0); // Reset start_time for fps calculation
             }
             cam.returnFrameBuffer(frameData);
         }
