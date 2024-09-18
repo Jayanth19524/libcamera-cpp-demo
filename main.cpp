@@ -3,97 +3,87 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
 #include "LibCamera.h"
+#include <fstream>
+#include <ctime>
 #include <vector>
 #include <algorithm>
-#include <ctime>
 
 using namespace cv;
-using namespace std;
 
-struct ImageData {
-    Mat image;
-    double clarity;
+// Structure to hold frame information
+struct FrameData {
+    int frameID;
     time_t timestamp;
+    float blueIntensity;
+    float greenIntensity;
+    float brownIntensity;  // Simplified as a mixture of red and green
+    float whiteIntensity;
+    float blackIntensity;
+    float yellowIntensity;
+    char filename[50];  // Filename for the saved image
 };
 
-// Function to calculate image clarity based on RGB values
-double calculateImageClarity(const Mat& image, bool isDay) {
-    Mat hsv;
-    cvtColor(image, hsv, COLOR_BGR2HSV);
+// Helper function to calculate pixel intensities
+void calculateColorIntensity(const Mat& frame, FrameData& frameData) {
+    int blueCount = 0, greenCount = 0, redCount = 0, totalPixels = frame.rows * frame.cols;
 
-    Scalar blue_lower(100, 50, 50), blue_upper(140, 255, 255);
-    Scalar green_lower(35, 50, 50), green_upper(85, 255, 255);
-    Scalar brown_lower(10, 50, 50), brown_upper(20, 255, 255);
+    for (int i = 0; i < frame.rows; ++i) {
+        for (int j = 0; j < frame.cols; ++j) {
+            Vec3b pixel = frame.at<Vec3b>(i, j);
+            int blue = pixel[0];
+            int green = pixel[1];
+            int red = pixel[2];
 
-    Scalar black_lower(0, 0, 0), black_upper(180, 255, 50);
-    Scalar yellow_lower(20, 50, 50), yellow_upper(30, 255, 255);
-
-    Mat blue_mask, green_mask, brown_mask, black_mask, yellow_mask;
-
-    inRange(hsv, blue_lower, blue_upper, blue_mask);
-    inRange(hsv, green_lower, green_upper, green_mask);
-    inRange(hsv, brown_lower, brown_upper, brown_mask);
-    inRange(hsv, black_lower, black_upper, black_mask);
-    inRange(hsv, yellow_lower, yellow_upper, yellow_mask);
-
-    double blue_percentage = (countNonZero(blue_mask) / (double)(image.rows * image.cols)) * 100;
-    double green_percentage = (countNonZero(green_mask) / (double)(image.rows * image.cols)) * 100;
-    double brown_percentage = (countNonZero(brown_mask) / (double)(image.rows * image.cols)) * 100;
-
-    double black_percentage = (countNonZero(black_mask) / (double)(image.rows * image.cols)) * 100;
-    double yellow_percentage = (countNonZero(yellow_mask) / (double)(image.rows * image.cols)) * 100;
-
-    // For day: prioritize blue, green, and brown, penalize white (clouds)
-    if (isDay) {
-        return blue_percentage + green_percentage + brown_percentage;
+            blueCount += blue;
+            greenCount += green;
+            redCount += red;
+        }
     }
-    // For night: prioritize yellow and black
-    else {
-        return yellow_percentage + black_percentage;
-    }
+
+    frameData.blueIntensity = static_cast<float>(blueCount) / totalPixels;
+    frameData.greenIntensity = static_cast<float>(greenCount) / totalPixels;
+    frameData.brownIntensity = (static_cast<float>(redCount + greenCount)) / (2 * totalPixels); // Approximation for brown
+    frameData.whiteIntensity = static_cast<float>((blueCount + greenCount + redCount) / 3) / totalPixels;
+    frameData.blackIntensity = static_cast<float>(totalPixels - (blueCount + greenCount + redCount)) / totalPixels;
+    frameData.yellowIntensity = static_cast<float>((redCount + greenCount)) / (2 * totalPixels);
 }
 
-// Function to check if the image is a day or night image
-bool isDay(const Mat& image) {
-    Mat hsv;
-    cvtColor(image, hsv, COLOR_BGR2HSV);
-
-    Scalar blue_lower(100, 50, 50), blue_upper(140, 255, 255);
-    Scalar green_lower(35, 50, 50), green_upper(85, 255, 255);
-    Scalar brown_lower(10, 50, 50), brown_upper(20, 255, 255);
-    Scalar black_lower(0, 0, 0), black_upper(180, 255, 50);
-    Scalar yellow_lower(20, 50, 50), yellow_upper(30, 255, 255);
-
-    Mat blue_mask, green_mask, brown_mask, black_mask, yellow_mask;
-    inRange(hsv, blue_lower, blue_upper, blue_mask);
-    inRange(hsv, green_lower, green_upper, green_mask);
-    inRange(hsv, brown_lower, brown_upper, brown_mask);
-    inRange(hsv, black_lower, black_upper, black_mask);
-    inRange(hsv, yellow_lower, yellow_upper, yellow_mask);
-
-    double blue_percentage = (countNonZero(blue_mask) / (double)(image.rows * image.cols)) * 100;
-    double green_percentage = (countNonZero(green_mask) / (double)(image.rows * image.cols)) * 100;
-    double brown_percentage = (countNonZero(brown_mask) / (double)(image.rows * image.cols)) * 100;
-
-    double black_percentage = (countNonZero(black_mask) / (double)(image.rows * image.cols)) * 100;
-    double yellow_percentage = (countNonZero(yellow_mask) / (double)(image.rows * image.cols)) * 100;
-
-    double day_color_percentage = blue_percentage + green_percentage + brown_percentage;
-    double night_color_percentage = black_percentage + yellow_percentage;
-
-    return day_color_percentage > night_color_percentage;
+// Function to store FrameData to a binary file
+void storeFrameData(const FrameData& frameData, const std::string& filename) {
+    std::ofstream file(filename, std::ios::binary | std::ios::app);
+    file.write(reinterpret_cast<const char*>(&frameData), sizeof(FrameData));
+    file.close();
 }
 
-void updateTopImages(vector<ImageData>& topImages, const Mat& image, double clarity, time_t timestamp) {
-    if (topImages.size() < 5) {
-        topImages.push_back({image, clarity, timestamp});
-    } else {
-        auto minElement = min_element(topImages.begin(), topImages.end(), 
-                                      [](const ImageData& a, const ImageData& b) {
-                                          return a.clarity < b.clarity;
-                                      });
-        if (clarity > minElement->clarity) {
-            *minElement = {image, clarity, timestamp};
+// Function to read and sort FrameData from the binary file
+std::vector<FrameData> readAndSortFrames(const std::string& filename) {
+    std::vector<FrameData> frames;
+    std::ifstream file(filename, std::ios::binary);
+    
+    FrameData temp;
+    while (file.read(reinterpret_cast<char*>(&temp), sizeof(FrameData))) {
+        frames.push_back(temp);
+    }
+    file.close();
+
+    // Sort by blue intensity (change as needed for other color priorities)
+    std::sort(frames.begin(), frames.end(), [](const FrameData& a, const FrameData& b) {
+        return a.blueIntensity > b.blueIntensity;
+    });
+
+    return frames;
+}
+
+// Function to load images from filenames
+void loadImagesFromTopFrames(const std::vector<FrameData>& frames, int topN = 5) {
+    for (int i = 0; i < std::min(topN, static_cast<int>(frames.size())); ++i) {
+        Mat img = imread(frames[i].filename);
+        if (!img.empty()) {
+            printf("Displaying top frame %d - Blue Intensity: %f, Filename: %s\n", frames[i].frameID, frames[i].blueIntensity, frames[i].filename);
+            imshow("Top Frame", img);
+            waitKey(0);  // Wait for a key press to show the next image
+        } else {
+            printf("Failed to load image %s\n", frames[i].filename);
         }
     }
 }
@@ -108,63 +98,65 @@ int main() {
     uint32_t height = 1080;
     uint32_t stride;
     char key;
+    int window_width = 1920;
+    int window_height = 1080;
+    const std::string binaryFile = "frame_data.bin";
 
-    vector<ImageData> topDayImages;
-    vector<ImageData> topNightImages;
+    if (width > window_width) {
+        cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
+        cv::resizeWindow("libcamera-demo", window_width, window_height);
+    }
 
-    cam.initCamera();
+    int ret = cam.initCamera();
     cam.configureStill(width, height, formats::RGB888, 1, 0);
     ControlList controls_;
-    int64_t frame_time = 1000000 / 24;  // 24 FPS
+    int64_t frame_time = 1000000 / 30;  // 30 fps
     controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
     controls_.set(controls::Brightness, 0.5);
     controls_.set(controls::Contrast, 1.5);
     controls_.set(controls::ExposureTime, 20000);
     cam.set(controls_);
 
-    if (!cam.startCamera()) {
+    if (!ret) {
+        bool flag;
         LibcameraOutData frameData;
+        cam.startCamera();
         cam.VideoStream(&width, &height, &stride);
-        time_t current_time = time(0);
-        time_t end_time = current_time + 90 * 60;  // 90 minutes
 
-        while (time(0) < end_time) {
-            if (!cam.readFrame(&frameData))
+        while (difftime(time(0), start_time) < 60) {  // Run for 60 seconds
+            flag = cam.readFrame(&frameData);
+            if (!flag)
                 continue;
 
-            Mat image(height, width, CV_8UC3, frameData.imageData, stride);
-            bool day = isDay(image);
-            double clarity = calculateImageClarity(image, day);
-
-            if (day) {
-                updateTopImages(topDayImages, image, clarity, time(0));
-            } else {
-                updateTopImages(topNightImages, image, clarity, time(0));
+            Mat im(height, width, CV_8UC3, frameData.imageData, stride);
+            imshow("libcamera-demo", im);
+            key = waitKey(1);
+            if (key == 'q') {
+                break;
             }
 
-            imshow("libcamera-demo", image);
-            key = waitKey(1);
-            if (key == 'q') break;
+            FrameData data;
+            data.frameID = frame_count;
+            data.timestamp = time(0);
+            snprintf(data.filename, sizeof(data.filename), "frame_%d.jpg", frame_count);
 
+            calculateColorIntensity(im, data);
+            storeFrameData(data, binaryFile);  // Store frame data in binary file
+
+            imwrite(data.filename, im);  // Save frame as image
+
+            frame_count++;
             cam.returnFrameBuffer(frameData);
         }
 
-        cam.stopCamera();
         destroyAllWindows();
+        cam.stopCamera();
     }
-
     cam.closeCamera();
 
-    // Saving top images after 90 minutes
-    for (int i = 0; i < topDayImages.size(); ++i) {
-        string filename = "day_image_" + to_string(i) + ".jpg";
-        imwrite(filename, topDayImages[i].image);
-    }
-
-    for (int i = 0; i < topNightImages.size(); ++i) {
-        string filename = "night_image_" + to_string(i) + ".jpg";
-        imwrite(filename, topNightImages[i].image);
-    }
+    // Read, sort frames, and load the top 5 images based on blue intensity
+    std::vector<FrameData> frames = readAndSortFrames(binaryFile);
+    loadImagesFromTopFrames(frames);
 
     return 0;
 }
