@@ -2,7 +2,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
-#include <opencv2/videoio.hpp>
+#include <opencv2/videoio.hpp>  // Ensure this header is included
 #include "LibCamera.h"
 #include <fstream>
 #include <ctime>
