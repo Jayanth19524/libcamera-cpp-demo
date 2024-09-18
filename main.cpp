@@ -2,6 +2,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
+#include <opencv2/videoio.hpp>
 #include "LibCamera.h"
 #include <fstream>
 #include <ctime>
@@ -74,16 +75,30 @@ std::vector<FrameData> readAndSortFrames(const std::string& filename) {
     return frames;
 }
 
-// Function to load images from filenames
-void loadImagesFromTopFrames(const std::vector<FrameData>& frames, int topN = 5) {
-    for (int i = 0; i < std::min(topN, static_cast<int>(frames.size())); ++i) {
-        Mat img = imread(frames[i].filename);
-        if (!img.empty()) {
-            printf("Displaying top frame %d - Blue Intensity: %f, Filename: %s\n", frames[i].frameID, frames[i].blueIntensity, frames[i].filename);
-            imshow("Top Frame", img);
-            waitKey(0);  // Wait for a key press to show the next image
+// Function to extract frames from the video based on timestamps
+void extractFramesFromVideo(const std::string& videoFile, const std::vector<FrameData>& frames) {
+    VideoCapture cap(videoFile);
+
+    if (!cap.isOpened()) {
+        std::cerr << "Error opening video file: " << videoFile << std::endl;
+        return;
+    }
+
+    double fps = cap.get(CAP_PROP_FPS);
+    for (const auto& frameData : frames) {
+        double timestampInSeconds = difftime(frameData.timestamp, time(0));
+        int frameNumber = static_cast<int>(timestampInSeconds * fps);
+
+        cap.set(CAP_PROP_POS_FRAMES, frameNumber);
+        Mat frame;
+        cap.read(frame);
+
+        if (!frame.empty()) {
+            std::string outputFilename = "extracted_frame_" + std::to_string(frameData.frameID) + ".jpg";
+            imwrite(outputFilename, frame);
+            std::cout << "Extracted frame " << frameData.frameID << " to " << outputFilename << std::endl;
         } else {
-            printf("Failed to load image %s\n", frames[i].filename);
+            std::cerr << "Failed to extract frame at " << frameNumber << std::endl;
         }
     }
 }
@@ -100,6 +115,7 @@ int main() {
     char key;
     int window_width = 1920;
     int window_height = 1080;
+    const std::string videoFile = "output_video.mp4";
     const std::string binaryFile = "frame_data.bin";
 
     if (width > window_width) {
@@ -123,7 +139,10 @@ int main() {
         cam.startCamera();
         cam.VideoStream(&width, &height, &stride);
 
-        while (difftime(time(0), start_time) < 60) {  // Run for 60 seconds
+        // Initialize VideoWriter
+        VideoWriter videoWriter(videoFile, VideoWriter::fourcc('H', '2', '6', '4'), 30, Size(width, height), true);
+
+        while (difftime(time(0), start_time) < 10) {  // Run for 10 seconds
             flag = cam.readFrame(&frameData);
             if (!flag)
                 continue;
@@ -135,6 +154,10 @@ int main() {
                 break;
             }
 
+            // Write frame to video
+            videoWriter.write(im);
+
+            // Record FrameData with timestamp
             FrameData data;
             data.frameID = frame_count;
             data.timestamp = time(0);
@@ -143,7 +166,8 @@ int main() {
             calculateColorIntensity(im, data);
             storeFrameData(data, binaryFile);  // Store frame data in binary file
 
-            imwrite(data.filename, im);  // Save frame as image
+            // Save the frame image as well
+            imwrite(data.filename, im);
 
             frame_count++;
             cam.returnFrameBuffer(frameData);
@@ -151,12 +175,13 @@ int main() {
 
         destroyAllWindows();
         cam.stopCamera();
+        videoWriter.release();
     }
     cam.closeCamera();
 
-    // Read, sort frames, and load the top 5 images based on blue intensity
+    // Read and sort frames based on timestamps and extract them from the video
     std::vector<FrameData> frames = readAndSortFrames(binaryFile);
-    loadImagesFromTopFrames(frames);
+    extractFramesFromVideo(videoFile, frames);
 
     return 0;
 }
