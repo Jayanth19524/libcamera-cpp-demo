@@ -1,18 +1,40 @@
-#include <opencv2/opencv.hpp>
 #include <iostream>
-#include <chrono>
+#include <opencv2/opencv.hpp>
 #include <thread>
-#include <cstdlib>
+#include <chrono>
+#include <vector>
+
+struct FrameData {
+    cv::Mat frame;
+    int whitePixels; // A metric for how much white is in the frame
+};
+
+// Function to calculate the amount of white pixels in a frame
+int calculateWhitePixels(const cv::Mat& frame) {
+    int whitePixelCount = 0;
+    
+    for (int y = 0; y < frame.rows; ++y) {
+        for (int x = 0; x < frame.cols; ++x) {
+            cv::Vec3b pixel = frame.at<cv::Vec3b>(y, x);
+            // White is considered if all RGB components are high (near 255)
+            if (pixel[0] > 200 && pixel[1] > 200 && pixel[2] > 200) {
+                whitePixelCount++;
+            }
+        }
+    }
+    
+    return whitePixelCount;
+}
 
 int main() {
-    // Use libcamera-vid to capture the live feed
+    // Start recording the video feed in the background using libcamera-vid
     system("libcamera-vid -t 10000 --inline --output live_feed.h264 &");
 
     // Wait for the camera feed to initialize
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    cv::VideoCapture cap("live_feed.h264");  // Open the captured video feed
-    
+    // Open the captured video feed using OpenCV
+    cv::VideoCapture cap("live_feed.h264");
     if (!cap.isOpened()) {
         std::cerr << "Error: Could not open the camera feed." << std::endl;
         return -1;
@@ -20,31 +42,50 @@ int main() {
 
     int frameCount = 0;
     int secondsToCapture = 10;  // Capture for 10 seconds
-    int fps = 1;  // 1 frame per second
+    int fps = 1;  // Capture 1 frame per second
     int totalFrames = secondsToCapture * fps;
-    
+
+    std::vector<FrameData> topFrames(5);  // Store top 5 frames
+
     cv::Mat frame;
-    std::string filename;
-
     while (frameCount < totalFrames) {
-        // Capture frame
+        // Capture a frame
         cap >> frame;
-
         if (frame.empty()) {
             std::cerr << "Error: Could not grab a frame." << std::endl;
             break;
         }
 
-        // Save each frame as an image
-        filename = "frame_" + std::to_string(frameCount) + ".jpg";
-        cv::imwrite(filename, frame);
+        // Analyze the frame for the number of white pixels (clouds)
+        int whitePixelCount = calculateWhitePixels(frame);
 
-        // Display the frame
+        // Determine if this frame should be added to the top 5 frames
+        int maxWhiteIndex = -1;
+        int maxWhiteValue = -1;
+        for (int i = 0; i < topFrames.size(); i++) {
+            if (topFrames[i].whitePixels > maxWhiteValue) {
+                maxWhiteValue = topFrames[i].whitePixels;
+                maxWhiteIndex = i;
+            }
+        }
+
+        // If the current frame has fewer white pixels, replace the worst frame
+        if (whitePixelCount < maxWhiteValue || frameCount < 5) {
+            if (frameCount >= 5) {
+                // We replace the worst frame
+                topFrames[maxWhiteIndex] = {frame.clone(), whitePixelCount};
+            } else {
+                // Initially populate the top 5 list
+                topFrames[frameCount] = {frame.clone(), whitePixelCount};
+            }
+        }
+
+        // Display the current frame
         cv::imshow("Camera Feed", frame);
-
+        
         // Wait for 1 second before capturing the next frame
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        
+
         if (cv::waitKey(1) == 'q') {
             break;
         }
@@ -52,9 +93,17 @@ int main() {
         frameCount++;
     }
 
-    // Clean up and close windows
+    // Save the top 5 frames to disk
+    for (int i = 0; i < topFrames.size(); ++i) {
+        if (!topFrames[i].frame.empty()) {
+            std::string filename = "best_frame_" + std::to_string(i) + ".jpg";
+            cv::imwrite(filename, topFrames[i].frame);
+        }
+    }
+
+    // Clean up
     cap.release();
     cv::destroyAllWindows();
 
     return 0;
-} 
+}
