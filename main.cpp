@@ -26,27 +26,43 @@ struct FrameData {
 
 // Helper function to calculate pixel intensities
 void calculateColorIntensity(const Mat& frame, FrameData& frameData) {
-    int blueCount = 0, greenCount = 0, redCount = 0, totalPixels = frame.rows * frame.cols;
+    Mat hsvFrame;
+    cvtColor(frame, hsvFrame, COLOR_BGR2HSV);  // Convert from BGR to HSV
 
-    for (int i = 0; i < frame.rows; ++i) {
-        for (int j = 0; j < frame.cols; ++j) {
-            Vec3b pixel = frame.at<Vec3b>(i, j);
-            int blue = pixel[0];
-            int green = pixel[1];
-            int red = pixel[2];
+    int hueCount[6] = {0};  // For different color ranges: blue, green, brown, white, black, yellow
+    int totalPixels = frame.rows * frame.cols;
 
-            blueCount += blue;
-            greenCount += green;
-            redCount += red;
+    for (int i = 0; i < hsvFrame.rows; ++i) {
+        for (int j = 0; j < hsvFrame.cols; ++j) {
+            Vec3b pixel = hsvFrame.at<Vec3b>(i, j);
+            int hue = pixel[0];     // Hue value
+            int saturation = pixel[1]; // Saturation
+            int value = pixel[2];   // Value (Brightness)
+
+            // Assign pixels to color bins based on hue value (simplified ranges)
+            if (hue >= 100 && hue <= 140) {
+                hueCount[0]++;  // Blue
+            } else if (hue >= 35 && hue <= 85) {
+                hueCount[1]++;  // Green
+            } else if (hue >= 20 && hue <= 30) {
+                hueCount[2]++;  // Brown approximation (yellowish-orange tones)
+            } else if (value > 200 && saturation < 50) {
+                hueCount[3]++;  // White (high brightness, low saturation)
+            } else if (value < 50) {
+                hueCount[4]++;  // Black (low brightness)
+            } else if (hue >= 25 && hue <= 35) {
+                hueCount[5]++;  // Yellow
+            }
         }
     }
 
-    frameData.blueIntensity = static_cast<float>(blueCount) / totalPixels;
-    frameData.greenIntensity = static_cast<float>(greenCount) / totalPixels;
-    frameData.brownIntensity = (static_cast<float>(redCount + greenCount)) / (2 * totalPixels); // Approximation for brown
-    frameData.whiteIntensity = static_cast<float>((blueCount + greenCount + redCount) / 3) / totalPixels;
-    frameData.blackIntensity = static_cast<float>(totalPixels - (blueCount + greenCount + redCount)) / totalPixels;
-    frameData.yellowIntensity = static_cast<float>((redCount + greenCount)) / (2 * totalPixels);
+    // Normalize the counts to get intensity ratios
+    frameData.blueIntensity = static_cast<float>(hueCount[0]) / totalPixels;
+    frameData.greenIntensity = static_cast<float>(hueCount[1]) / totalPixels;
+    frameData.brownIntensity = static_cast<float>(hueCount[2]) / totalPixels;
+    frameData.whiteIntensity = static_cast<float>(hueCount[3]) / totalPixels;
+    frameData.blackIntensity = static_cast<float>(hueCount[4]) / totalPixels;
+    frameData.yellowIntensity = static_cast<float>(hueCount[5]) / totalPixels;
 }
 
 // Function to store FrameData to a binary file
@@ -140,7 +156,7 @@ int main() {
         cam.VideoStream(&width, &height, &stride);
 
         // Initialize VideoWriter
-        VideoWriter videoWriter(videoFile, VideoWriter::fourcc('H', '2', '6', '4'), 30, Size(width, height), true);
+        cv::VideoWriter videoWriter(videoFile, cv::VideoWriter::fourcc('H', '2', '6', '4'), 30, cv::Size(width, height), true);
 
         while (difftime(time(0), start_time) < 10) {  // Run for 10 seconds
             flag = cam.readFrame(&frameData);
@@ -167,7 +183,7 @@ int main() {
             storeFrameData(data, binaryFile);  // Store frame data in binary file
 
             // Save the frame image as well
-            imwrite(data.filename, im);
+           
 
             frame_count++;
             cam.returnFrameBuffer(frameData);
