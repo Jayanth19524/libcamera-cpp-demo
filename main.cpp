@@ -2,12 +2,14 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
-#include <opencv2/videoio.hpp>  // Ensure this header is included
+#include <opencv2/videoio.hpp>
 #include "LibCamera.h"
 #include <fstream>
 #include <ctime>
 #include <vector>
 #include <algorithm>
+#include <set>
+#include <filesystem>  // C++17 for directory management
 
 using namespace cv;
 
@@ -17,52 +19,50 @@ struct FrameData {
     time_t timestamp;
     float blueIntensity;
     float greenIntensity;
-    float brownIntensity;  // Simplified as a mixture of red and green
     float whiteIntensity;
-    float blackIntensity;
-    float yellowIntensity;
+    int uniqueColors;
     char filename[50];  // Filename for the saved image
 };
 
-// Helper function to calculate pixel intensities
+// Helper function to calculate pixel intensities based on HSV
 void calculateColorIntensity(const Mat& frame, FrameData& frameData) {
     Mat hsvFrame;
     cvtColor(frame, hsvFrame, COLOR_BGR2HSV);  // Convert from BGR to HSV
 
-    int hueCount[6] = {0};  // For different color ranges: blue, green, brown, white, black, yellow
+    int blueCount = 0, greenCount = 0, whiteCount = 0;
     int totalPixels = frame.rows * frame.cols;
+    std::set<Vec3b, std::less<>> uniqueColors;
 
     for (int i = 0; i < hsvFrame.rows; ++i) {
         for (int j = 0; j < hsvFrame.cols; ++j) {
             Vec3b pixel = hsvFrame.at<Vec3b>(i, j);
-            int hue = pixel[0];     // Hue value
-            int saturation = pixel[1]; // Saturation
-            int value = pixel[2];   // Value (Brightness)
+            int hue = pixel[0];
+            int saturation = pixel[1];
+            int value = pixel[2];
 
-            // Assign pixels to color bins based on hue value (simplified ranges)
+            // Track unique colors (excluding white)
+            if (saturation > 50 && value < 240) {
+                uniqueColors.insert(pixel);
+            }
+
+            // Count blue pixels (approx. hue 100-140) and green pixels (approx. hue 35-85)
             if (hue >= 100 && hue <= 140) {
-                hueCount[0]++;  // Blue
+                blueCount++;
             } else if (hue >= 35 && hue <= 85) {
-                hueCount[1]++;  // Green
-            } else if (hue >= 20 && hue <= 30) {
-                hueCount[2]++;  // Brown approximation (yellowish-orange tones)
-            } else if (value > 200 && saturation < 50) {
-                hueCount[3]++;  // White (high brightness, low saturation)
-            } else if (value < 50) {
-                hueCount[4]++;  // Black (low brightness)
-            } else if (hue >= 25 && hue <= 35) {
-                hueCount[5]++;  // Yellow
+                greenCount++;
+            }
+
+            // Count white pixels (high brightness, low saturation)
+            if (saturation < 50 && value > 200) {
+                whiteCount++;
             }
         }
     }
 
-    // Normalize the counts to get intensity ratios
-    frameData.blueIntensity = static_cast<float>(hueCount[0]) / totalPixels;
-    frameData.greenIntensity = static_cast<float>(hueCount[1]) / totalPixels;
-    frameData.brownIntensity = static_cast<float>(hueCount[2]) / totalPixels;
-    frameData.whiteIntensity = static_cast<float>(hueCount[3]) / totalPixels;
-    frameData.blackIntensity = static_cast<float>(hueCount[4]) / totalPixels;
-    frameData.yellowIntensity = static_cast<float>(hueCount[5]) / totalPixels;
+    frameData.blueIntensity = static_cast<float>(blueCount) / totalPixels;
+    frameData.greenIntensity = static_cast<float>(greenCount) / totalPixels;
+    frameData.whiteIntensity = static_cast<float>(whiteCount) / totalPixels;
+    frameData.uniqueColors = uniqueColors.size();  // Number of unique colors
 }
 
 // Function to store FrameData to a binary file
@@ -76,23 +76,18 @@ void storeFrameData(const FrameData& frameData, const std::string& filename) {
 std::vector<FrameData> readAndSortFrames(const std::string& filename) {
     std::vector<FrameData> frames;
     std::ifstream file(filename, std::ios::binary);
-    
+
     FrameData temp;
     while (file.read(reinterpret_cast<char*>(&temp), sizeof(FrameData))) {
         frames.push_back(temp);
     }
     file.close();
 
-    // Sort by blue intensity (change as needed for other color priorities)
-    std::sort(frames.begin(), frames.end(), [](const FrameData& a, const FrameData& b) {
-        return a.blueIntensity > b.blueIntensity;
-    });
-
     return frames;
 }
 
 // Function to extract frames from the video based on timestamps
-void extractFramesFromVideo(const std::string& videoFile, const std::vector<FrameData>& frames) {
+void extractFramesFromVideo(const std::string& videoFile, const std::vector<FrameData>& frames, const std::string& outputDir) {
     VideoCapture cap(videoFile);
 
     if (!cap.isOpened()) {
@@ -110,13 +105,48 @@ void extractFramesFromVideo(const std::string& videoFile, const std::vector<Fram
         cap.read(frame);
 
         if (!frame.empty()) {
-            std::string outputFilename = "extracted_frame_" + std::to_string(frameData.frameID) + ".jpg";
+            std::string outputFilename = outputDir + "/extracted_frame_" + std::to_string(frameData.frameID) + ".jpg";
             imwrite(outputFilename, frame);
             std::cout << "Extracted frame " << frameData.frameID << " to " << outputFilename << std::endl;
         } else {
             std::cerr << "Failed to extract frame at " << frameNumber << std::endl;
         }
     }
+}
+
+// Function to select the top 5 frames based on the specified criteria
+std::vector<FrameData> selectFrames(const std::vector<FrameData>& frames) {
+    std::vector<FrameData> blueFrames, greenFrames, uniqueColorFrames;
+
+    for (const auto& frame : frames) {
+        if (frame.blueIntensity > 0.3f) {
+            blueFrames.push_back(frame);
+        } else if (frame.greenIntensity > 0.2f) {
+            greenFrames.push_back(frame);
+        } else {
+            uniqueColorFrames.push_back(frame);
+        }
+    }
+
+    // If blue frames are available, sort them by white intensity
+    if (!blueFrames.empty()) {
+        std::sort(blueFrames.begin(), blueFrames.end(), [](const FrameData& a, const FrameData& b) {
+            return a.whiteIntensity > b.whiteIntensity;
+        });
+        return std::vector<FrameData>(blueFrames.begin(), blueFrames.begin() + std::min((size_t)5, blueFrames.size()));
+    }
+
+    // If no blue frames, but green frames exist, return them
+    if (!greenFrames.empty()) {
+        return std::vector<FrameData>(greenFrames.begin(), greenFrames.begin() + std::min((size_t)5, greenFrames.size()));
+    }
+
+    // As a fallback, return frames sorted by unique colors
+    std::sort(uniqueColorFrames.begin(), uniqueColorFrames.end(), [](const FrameData& a, const FrameData& b) {
+        return a.uniqueColors > b.uniqueColors;
+    });
+
+    return std::vector<FrameData>(uniqueColorFrames.begin(), uniqueColorFrames.begin() + std::min((size_t)5, uniqueColorFrames.size()));
 }
 
 int main() {
@@ -133,6 +163,14 @@ int main() {
     int window_height = 1080;
     const std::string videoFile = "output_video.mp4";
     const std::string binaryFile = "frame_data.bin";
+
+    // Directories for storing results
+    const std::string dayOutputDir = "day_frames";
+    const std::string nightOutputDir = "night_frames";
+
+    // Create directories if they don't exist
+    std::filesystem::create_directory(dayOutputDir);
+    std::filesystem::create_directory(nightOutputDir);
 
     if (width > window_width) {
         cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
@@ -182,9 +220,6 @@ int main() {
             calculateColorIntensity(im, data);
             storeFrameData(data, binaryFile);  // Store frame data in binary file
 
-            // Save the frame image as well
-           
-
             frame_count++;
             cam.returnFrameBuffer(frameData);
         }
@@ -195,9 +230,17 @@ int main() {
     }
     cam.closeCamera();
 
-    // Read and sort frames based on timestamps and extract them from the video
+    // Read, sort, and select top 5 frames for day and night
     std::vector<FrameData> frames = readAndSortFrames(binaryFile);
-    extractFramesFromVideo(videoFile, frames);
+    std::vector<FrameData> selectedDayFrames = selectFrames(frames);  // Same criteria for both day and night in this case
+
+    // Extract frames for Day algorithm
+    extractFramesFromVideo(videoFile, selectedDayFrames, dayOutputDir);
+
+    // Since no distinct night algorithm was mentioned, assume same criteria for now
+    extractFramesFromVideo(videoFile, selectedDayFrames, nightOutputDir);
+
+    std::cout << "Processing complete. Extracted top 5 frames for Day and Night." << std::endl;
 
     return 0;
 }
