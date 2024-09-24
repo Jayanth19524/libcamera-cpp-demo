@@ -57,6 +57,8 @@ void calculateColorIntensity(const Mat& frame, FrameData& frameData) {
     }
 
     // Normalize the counts to get intensity ratios
+    std::cout << "Hue Count for Blue: " << hueCount[0] << " ";
+    std::cout << "Total Pixels: " << totalPixels << "\n";
     frameData.blueIntensity = static_cast<float>(hueCount[0]) / totalPixels;
     frameData.greenIntensity = static_cast<float>(hueCount[1]) / totalPixels;
     frameData.brownIntensity = static_cast<float>(hueCount[2]) / totalPixels;
@@ -155,7 +157,7 @@ int main() {
     char key;
     int window_width = 1920;
     int window_height = 1080;
-    const std::string videoFile = "output_video.mp4";
+    const std::string videoFile = "live_feed.h264";
     const std::string binaryFile = "frame_data.bin";
 
     if (width > window_width) {
@@ -221,7 +223,7 @@ int main() {
 
     // Read and sort frames based on timestamps and extract them from the video
     std::vector<FrameData> frames = readAndSortFramesforDay(binaryFile);
-    extractFramesFromVideo(videoFile, frames);
+    // extractFramesFromVideo(videoFile, frames);
 
     return 0;
 }
