@@ -5,7 +5,6 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
-#include <chrono>
 
 using namespace cv;
 
@@ -32,9 +31,7 @@ void saveFrameData(const std::vector<FrameData>& frames, const std::string& file
 }
 
 int main() {
-    // Use chrono for precise time tracking
-    auto start_time = std::chrono::steady_clock::now();
-    const std::chrono::seconds run_duration(30); // Run for 30 seconds
+    time_t start_time = time(0);
     int frame_count = 0;
     float lens_position = 100;
     float focus_step = 50;
@@ -68,14 +65,7 @@ int main() {
 
         cam.startCamera();
         cam.VideoStream(&width, &height, &stride);
-        
         while (true) {
-            // Check if 30 seconds have passed
-            auto current_time = std::chrono::steady_clock::now();
-            if (current_time - start_time >= run_duration) {
-                break; // Exit the loop after 30 seconds
-            }
-
             LibcameraOutData frameData;
             bool flag = cam.readFrame(&frameData);
             if (!flag) continue;
@@ -124,6 +114,12 @@ int main() {
             if (key == 'q') break;
 
             frame_count++;
+            if ((time(0) - start_time) >= 1) {
+                printf("fps: %d\n", frame_count);
+                frame_count = 0;
+                start_time = time(0);
+            }
+            cam.returnFrameBuffer(frameData);
         }
 
         // Save frame data to a binary file
