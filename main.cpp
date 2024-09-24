@@ -3,10 +3,13 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/videoio.hpp>
-#include "LibCamera.h"
+#include "LibCamera.h" // Ensure you have the correct path for your LibCamera headers
 #include <fstream>
 #include <vector>
+#include <set>
+#include <tuple>
 #include <algorithm>
+#include <iostream>
 
 using namespace cv;
 
@@ -135,7 +138,7 @@ int main() {
         cv::VideoWriter videoWriter(videoFile, cv::VideoWriter::fourcc('H', '2', '6', '4'), 30, cv::Size(width, height), true);
 
         while (frame_count < 300) {  // Capture for 300 frames (approx. 10 seconds at 30 fps)
-            LibCameraOutData frameData;
+            LibCameraOutData frameData; // Ensure this type is defined in your LibCamera headers
             if (cam.readFrame(&frameData)) {
                 Mat im(height, width, CV_8UC3, frameData.imageData, stride);
                 imshow("libcamera-demo", im);
