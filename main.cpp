@@ -5,6 +5,7 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <sys/stat.h>
 
 using namespace cv;
 
@@ -32,7 +33,7 @@ void saveFrameData(const std::vector<FrameData>& frames, const std::string& file
     }
 }
 
-// Function to calculate color intensity (you need to implement this)
+// Function to calculate color intensity
 void calculateColorIntensity(const Mat& image, FrameData& data) {
     // Convert to HSV for color analysis
     Mat hsv;
@@ -62,6 +63,14 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
     data.blackCount = countNonZero(mask_black);
 }
 
+// Function to create a directory if it does not exist
+void createDirectory(const std::string& dirName) {
+    struct stat st;
+    if (stat(dirName.c_str(), &st) != 0) {
+        mkdir(dirName.c_str(), 0777); // Create directory
+    }
+}
+
 int main() {
     time_t start_time = time(0);
     int frame_count = 0;
@@ -73,6 +82,10 @@ int main() {
     const int capture_duration = 30; // Capture for 30 seconds
     const std::string videoFile = "output_video.mp4"; // Output video file
     const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
+    const std::string dayFolder = "day"; // Directory for day frames
+
+    // Create the "day" directory
+    createDirectory(dayFolder);
 
     // Create a window for displaying the camera feed
     cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
@@ -130,7 +143,7 @@ int main() {
             cam.returnFrameBuffer(frameData);
         }
 
-         // Save frame data to a binary file
+        // Save frame data to a binary file
         saveFrameData(frameDataList, binaryFile);
 
         // Sort frames based on blue intensity
@@ -138,15 +151,45 @@ int main() {
             return a.blueCount > b.blueCount; // Sort in descending order
         });
 
-        // Save the top 4 highest blue intensity images
-        for (int i = 0; i < std::min(4, static_cast<int>(frameDataList.size())); ++i) {
-            const FrameData& topFrame = frameDataList[i];
-            // Load the original image using the frame ID or filename if available
-            Mat image = imread(topFrame.filename);
-            if (!image.empty()) {
-                // Save the top images with a new filename
-                std::string newFilename = "top_blue_frame_" + std::to_string(i + 1) + ".jpg";
-                imwrite(newFilename, image);
+        // Determine if it's day or night based on black pixels
+        const int totalFrames = frameDataList.size();
+        int totalBlackCount = 0;
+
+        for (const FrameData& frame : frameDataList) {
+            totalBlackCount += frame.blackCount;
+        }
+
+        // Calculate the percentage of black pixels
+        double blackPixelPercentage = (static_cast<double>(totalBlackCount) / (totalFrames * width * height)) * 100;
+
+        if (blackPixelPercentage < 70.0) { // Daytime condition
+            // Save the top 4 highest blue intensity images
+            for (int i = 0; i < std::min(4, static_cast<int>(frameDataList.size())); ++i) {
+                const FrameData& topFrame = frameDataList[i];
+                // Load the original image using the frame ID or filename if available
+                Mat image = imread(topFrame.filename);
+                if (!image.empty()) {
+                    // Save the top images in the day folder
+                    std::string newFilename = dayFolder + "/top_blue_frame_" + std::to_string(i + 1) + ".jpg";
+                    imwrite(newFilename, image);
+                }
+            }
+        } else { // Nighttime condition
+            // Sort frames based on yellow intensity
+            std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
+                return a.yellowCount > b.yellowCount; // Sort in descending order
+            });
+
+            // Save the top 4 highest yellow intensity images
+            for (int i = 0; i < std::min(4, static_cast<int>(frameDataList.size())); ++i) {
+                const FrameData& topFrame = frameDataList[i];
+                // Load the original image using the frame ID or filename if available
+                Mat image = imread(topFrame.filename);
+                if (!image.empty()) {
+                    // Save the top images in the day folder
+                    std::string newFilename = dayFolder + "/top_yellow_frame_" + std::to_string(i + 1) + ".jpg";
+                    imwrite(newFilename, image);
+                }
             }
         }
 
