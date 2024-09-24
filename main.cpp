@@ -15,7 +15,6 @@ struct FrameData {
     int greenCount;
     int yellowCount;
     int blackCount;
-    int uniqueColorCount;
 };
 
 // Function to save frame data to a binary file
@@ -96,10 +95,9 @@ int main() {
             int count_green = countNonZero(mask_green);
             int count_yellow = countNonZero(mask_yellow);
             int count_black = countNonZero(mask_black);
-            int count_unique_colors = static_cast<int>(countNonZero(unique(hsv))); // Count unique colors if necessary
 
             // Store frame data
-            FrameData data = { frame_count, count_blue, count_green, count_yellow, count_black, count_unique_colors };
+            FrameData data = { frame_count, count_blue, count_green, count_yellow, count_black };
             frameDataList.push_back(data);
 
             // Process to keep only top 5 frames based on green count
