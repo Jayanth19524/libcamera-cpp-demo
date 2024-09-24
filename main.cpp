@@ -1,147 +1,33 @@
-#include <opencv2/imgproc.hpp>
+#include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
-#include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
-#include <opencv2/videoio.hpp>  // Ensure this header is included
-#include "LibCamera.h"
+#include "LibCamera.h" // Ensure to include your LibCamera header
 #include <fstream>
-#include <ctime>
 #include <vector>
 #include <algorithm>
 
 using namespace cv;
 
-// Structure to hold frame information
+// Struct to hold frame data
 struct FrameData {
     int frameID;
-    time_t timestamp;
-    float blueIntensity;
-    float greenIntensity;
-    float brownIntensity;  // Simplified as a mixture of red and green
-    float whiteIntensity;
-    float blackIntensity;
-    float yellowIntensity;
-    char filename[50];  // Filename for the saved image
+    int blueCount;
+    int greenCount;
+    int yellowCount;
+    int blackCount;
+    int uniqueColorCount;
 };
 
-// Helper function to calculate pixel intensities
-void calculateColorIntensity(const Mat& frame, FrameData& frameData) {
-    Mat hsvFrame;
-    cvtColor(frame, hsvFrame, COLOR_BGR2HSV);  // Convert from BGR to HSV
-
-    int hueCount[6] = {0};  // For different color ranges: blue, green, brown, white, black, yellow
-    int totalPixels = frame.rows * frame.cols;
-
-    for (int i = 0; i < hsvFrame.rows; ++i) {
-        for (int j = 0; j < hsvFrame.cols; ++j) {
-            Vec3b pixel = hsvFrame.at<Vec3b>(i, j);
-            int hue = pixel[0];     // Hue value
-            int saturation = pixel[1]; // Saturation
-            int value = pixel[2];   // Value (Brightness)
-
-            // Assign pixels to color bins based on hue value (simplified ranges)
-            if (hue >= 100 && hue <= 140) {
-                hueCount[0]++;  // Blue
-            } else if (hue >= 35 && hue <= 85) {
-                hueCount[1]++;  // Green
-            } else if (hue >= 20 && hue <= 30) {
-                hueCount[2]++;  // Brown approximation (yellowish-orange tones)
-            } else if (value > 200 && saturation < 50) {
-                hueCount[3]++;  // White (high brightness, low saturation)
-            } else if (value < 50) {
-                hueCount[4]++;  // Black (low brightness)
-            } else if (hue >= 25 && hue <= 35) {
-                hueCount[5]++;  // Yellow
-            }
+// Function to save frame data to a binary file
+void saveFrameData(const std::vector<FrameData>& frames, const std::string& filename) {
+    std::ofstream file(filename, std::ios::binary);
+    if (file.is_open()) {
+        for (const auto& frame : frames) {
+            file.write(reinterpret_cast<const char*>(&frame), sizeof(FrameData));
         }
-    }
-
-    // Normalize the counts to get intensity ratios
-    std::cout << "Hue Count for Blue: " << hueCount[0] << " ";
-    std::cout << "Total Pixels: " << totalPixels << "\n";
-    frameData.blueIntensity = static_cast<float>(hueCount[0]) / totalPixels;
-    frameData.greenIntensity = static_cast<float>(hueCount[1]) / totalPixels;
-    frameData.brownIntensity = static_cast<float>(hueCount[2]) / totalPixels;
-    frameData.whiteIntensity = static_cast<float>(hueCount[3]) / totalPixels;
-    frameData.blackIntensity = static_cast<float>(hueCount[4]) / totalPixels;
-    frameData.yellowIntensity = static_cast<float>(hueCount[5]) / totalPixels;
-}
-
-// Function to store FrameData to a binary file
-void storeFrameData(const FrameData& frameData, const std::string& filename) {
-    std::ofstream file(filename, std::ios::binary | std::ios::app);
-    file.write(reinterpret_cast<const char*>(&frameData), sizeof(FrameData));
-    file.close();
-}
-
-// Function to read and sort FrameData from the binary file
-std::vector<FrameData> readAndSortFramesforDay(const std::string& filename) {
-    std::vector<FrameData> frames;
-    std::ifstream file(filename, std::ios::binary);
-    
-    FrameData temp;
-    while (file.read(reinterpret_cast<char*>(&temp), sizeof(FrameData))) {
-        frames.push_back(temp);
-    }
-    file.close();
-
-    // Sort by blue intensity
-    std::sort(frames.begin(), frames.end(), [](const FrameData& a, const FrameData& b) {
-        return a.blueIntensity > b.blueIntensity;
-    });
-
-    // Print metadata and show images for the first five frames
-    for (size_t i = 0; i < std::min(frames.size(), size_t(5)); ++i) {
-        const FrameData& frame = frames[i];
-        std::cout << "Frame ID: " << frame.frameID << "\n"
-                  << "Timestamp: " << frame.timestamp << "\n"
-                  << "Blue Intensity: " << frame.blueIntensity << "\n"
-                  << "Green Intensity: " << frame.greenIntensity << "\n"
-                  << "Brown Intensity: " << frame.brownIntensity << "\n"
-                  << "White Intensity: " << frame.whiteIntensity << "\n"
-                  << "Black Intensity: " << frame.blackIntensity << "\n"
-                  << "Yellow Intensity: " << frame.yellowIntensity << "\n"
-                  << "Filename: " << frame.filename << "\n\n";
-        
-        // Load and display the image
-        cv::Mat image = cv::imread(frame.filename, cv::IMREAD_COLOR);
-        if (!image.empty()) {
-            cv::imshow("Image " + std::to_string(i + 1), image);
-            cv::waitKey(0); // Wait for a key press to close the window
-        } else {
-            std::cerr << "Could not load image: " << frame.filename << "\n";
-        }
-    }
-
-    cv::destroyAllWindows(); // Close all OpenCV windows
-    return frames;
-}
-
-// Function to extract frames from the video based on timestamps
-void extractFramesFromVideo(const std::string& videoFile, const std::vector<FrameData>& frames) {
-    VideoCapture cap(videoFile);
-
-    if (!cap.isOpened()) {
-        std::cerr << "Error opening video file: " << videoFile << std::endl;
-        return;
-    }
-
-    double fps = cap.get(CAP_PROP_FPS);
-    for (const auto& frameData : frames) {
-        double timestampInSeconds = difftime(frameData.timestamp, time(0));
-        int frameNumber = static_cast<int>(timestampInSeconds * fps);
-
-        cap.set(CAP_PROP_POS_FRAMES, frameNumber);
-        Mat frame;
-        cap.read(frame);
-
-        if (!frame.empty()) {
-            std::string outputFilename = "extracted_frame_" + std::to_string(frameData.frameID) + ".jpg";
-            imwrite(outputFilename, frame);
-            std::cout << "Extracted frame " << frameData.frameID << " to " << outputFilename << std::endl;
-        } else {
-            std::cerr << "Failed to extract frame at " << frameNumber << std::endl;
-        }
+        file.close();
+    } else {
+        std::cerr << "Error: Unable to open file for writing." << std::endl;
     }
 }
 
@@ -157,18 +43,17 @@ int main() {
     char key;
     int window_width = 1920;
     int window_height = 1080;
-    const std::string videoFile = "live_feed.h264";
-    const std::string binaryFile = "frame_data.bin";
 
+    // Create a window for displaying the camera feed
     if (width > window_width) {
         cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
         cv::resizeWindow("libcamera-demo", window_width, window_height);
-    }
+    } 
 
     int ret = cam.initCamera();
     cam.configureStill(width, height, formats::RGB888, 1, 0);
     ControlList controls_;
-    int64_t frame_time = 1000000 / 30;  // 30 fps
+    int64_t frame_time = 1000000 / 10;
     controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
     controls_.set(controls::Brightness, 0.5);
     controls_.set(controls::Contrast, 1.5);
@@ -176,54 +61,75 @@ int main() {
     cam.set(controls_);
 
     if (!ret) {
-        bool flag;
-        LibcameraOutData frameData;
+        std::vector<FrameData> frameDataList;
+        const int topFramesCount = 5;
+
         cam.startCamera();
         cam.VideoStream(&width, &height, &stride);
-
-        // Initialize VideoWriter
-        cv::VideoWriter videoWriter(videoFile, cv::VideoWriter::fourcc('H', '2', '6', '4'), 30, cv::Size(width, height), true);
-
-        while (difftime(time(0), start_time) < 10) {  // Run for 10 seconds
-            flag = cam.readFrame(&frameData);
-            if (!flag)
-                continue;
+        while (true) {
+            LibcameraOutData frameData;
+            bool flag = cam.readFrame(&frameData);
+            if (!flag) continue;
 
             Mat im(height, width, CV_8UC3, frameData.imageData, stride);
-            imshow("libcamera-demo", im);
-            key = waitKey(1);
-            if (key == 'q') {
-                break;
+            Mat hsv;
+            cvtColor(im, hsv, COLOR_BGR2HSV);
+
+            // Define color ranges in HSV
+            int lower_blue[] = {110, 50, 70};
+            int upper_blue[] = {130, 255, 255};
+            int lower_green[] = {36, 25, 25};
+            int upper_green[] = {70, 255, 255};
+            int lower_yellow[] = {20, 100, 100};
+            int upper_yellow[] = {30, 255, 255};
+            int black[] = {0, 0, 0};
+
+            // Create masks
+            Mat mask_blue, mask_green, mask_yellow, mask_black;
+            inRange(hsv, Scalar(lower_blue[0], lower_blue[1], lower_blue[2]), Scalar(upper_blue[0], upper_blue[1], upper_blue[2]), mask_blue);
+            inRange(hsv, Scalar(lower_green[0], lower_green[1], lower_green[2]), Scalar(upper_green[0], upper_green[1], upper_green[2]), mask_green);
+            inRange(hsv, Scalar(lower_yellow[0], lower_yellow[1], lower_yellow[2]), Scalar(upper_yellow[0], upper_yellow[1], upper_yellow[2]), mask_yellow);
+            inRange(hsv, Scalar(black[0], black[1], black[2]), Scalar(black[0], black[1], black[2]), mask_black);
+
+            // Count colors
+            int count_blue = countNonZero(mask_blue);
+            int count_green = countNonZero(mask_green);
+            int count_yellow = countNonZero(mask_yellow);
+            int count_black = countNonZero(mask_black);
+            int count_unique_colors = static_cast<int>(countNonZero(unique(hsv))); // Count unique colors if necessary
+
+            // Store frame data
+            FrameData data = { frame_count, count_blue, count_green, count_yellow, count_black, count_unique_colors };
+            frameDataList.push_back(data);
+
+            // Process to keep only top 5 frames based on green count
+            if (frameDataList.size() > topFramesCount) {
+                std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
+                    return a.greenCount > b.greenCount; // Change this to your criteria
+                });
+                frameDataList.resize(topFramesCount); // Keep only top 5
             }
 
-            // Write frame to video
-            videoWriter.write(im);
-
-            // Record FrameData with timestamp
-            FrameData data;
-            data.frameID = frame_count;
-            data.timestamp = time(0);
-            snprintf(data.filename, sizeof(data.filename), "frame_%d.jpg", frame_count);
-
-            calculateColorIntensity(im, data);
-            storeFrameData(data, binaryFile);  // Store frame data in binary file
-
-            // Save the frame image as well
-           
+            // Show the frame
+            imshow("libcamera-demo", im);
+            key = waitKey(1);
+            if (key == 'q') break;
 
             frame_count++;
+            if ((time(0) - start_time) >= 1) {
+                printf("fps: %d\n", frame_count);
+                frame_count = 0;
+                start_time = time(0);
+            }
             cam.returnFrameBuffer(frameData);
         }
 
+        // Save frame data to a binary file
+        saveFrameData(frameDataList, "frame_data.bin");
+
         destroyAllWindows();
         cam.stopCamera();
-        videoWriter.release();
     }
     cam.closeCamera();
-
-    // Read and sort frames based on timestamps and extract them from the video
-    std::vector<FrameData> frames = readAndSortFramesforDay(binaryFile);
-    // extractFramesFromVideo(videoFile, frames);
-
     return 0;
 }
