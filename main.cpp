@@ -5,6 +5,8 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <cstdio> // Include for std::remove
+#include <ctime>
 
 using namespace cv;
 
@@ -63,6 +65,11 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
 }
 
 int main() {
+    const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
+
+    // Delete the previous binary file if it exists
+    std::remove(binaryFile.c_str());
+
     time_t start_time = time(0);
     int frame_count = 0;
     LibCamera cam;
@@ -72,7 +79,6 @@ int main() {
     char key;
     const int capture_duration = 30; // Capture for 30 seconds
     const std::string videoFile = "output_video.mp4"; // Output video file
-    const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
 
     // Create a window for displaying the camera feed
     cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
@@ -123,15 +129,29 @@ int main() {
             calculateColorIntensity(im, data);
             frameDataList.push_back(data); // Store frame data in a list
 
-            // Save the frame image as well
-            imwrite(data.filename, im); // Save the current frame as an image file
-
             frame_count++;
             cam.returnFrameBuffer(frameData);
         }
 
         // Save frame data to a binary file
         saveFrameData(frameDataList, binaryFile);
+
+        // Sort frames based on blue intensity
+        std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
+            return a.blueCount > b.blueCount; // Sort in descending order
+        });
+
+        // Save the top 4 highest blue intensity images
+        for (int i = 0; i < std::min(4, static_cast<int>(frameDataList.size())); ++i) {
+            const FrameData& topFrame = frameDataList[i];
+            // Load the original image using the frame ID or filename if available
+            Mat image = imread(topFrame.filename);
+            if (!image.empty()) {
+                // Save the top images with a new filename
+                std::string newFilename = "top_blue_frame_" + std::to_string(i + 1) + ".jpg";
+                imwrite(newFilename, image);
+            }
+        }
 
         destroyAllWindows();
         cam.stopCamera();
