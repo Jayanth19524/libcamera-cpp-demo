@@ -96,10 +96,13 @@ int main() {
     const std::string videoFile = "output_video.mp4"; // Output video file
     const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
     const std::string dayFolder = "day"; // Directory for day frames
-    const std::string nightFolder = "night";
-    // Create the "day" directory
+    const std::string nightFolder = "night"; // Directory for night frames
+    const std::string tempFolder = "temp"; // Directory for temp frames
+
+    // Create necessary directories
     createDirectory(dayFolder);
     createDirectory(nightFolder);
+    createDirectory(tempFolder); // Create the temp directory
 
     // Create a window for displaying the camera feed
     cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
@@ -150,8 +153,9 @@ int main() {
             calculateColorIntensity(im, data);
             frameDataList.push_back(data); // Store frame data in a list
 
-            // Save the frame image as well
-            imwrite(data.filename, im); // Save the current frame as an image file
+            // Save the frame image in the temp directory
+            std::string tempFilename = tempFolder + "/" + data.filename; // Use temp folder for filenames
+            imwrite(tempFilename, im); // Save the current frame as an image file in temp
 
             frame_count++;
             cam.returnFrameBuffer(frameData);
@@ -180,8 +184,8 @@ int main() {
             // Save the top 4 highest blue intensity images
             for (int i = 0; i < std::min(4, static_cast<int>(frameDataList.size())); ++i) {
                 const FrameData& topFrame = frameDataList[i];
-                // Load the original image using the frame ID or filename if available
-                Mat image = imread(topFrame.filename);
+                // Load the original image from the temp directory using the frame ID or filename if available
+                Mat image = imread(tempFolder + "/" + topFrame.filename);
                 if (!image.empty()) {
                     // Save the top images in the day folder
                     std::string newFilename = dayFolder + "/top_blue_frame_" + std::to_string(i + 1) + ".jpg";
@@ -193,12 +197,11 @@ int main() {
             std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
                 return a.yellowCount > b.yellowCount; // Sort in descending order
             });
-
             // Save the top 4 highest yellow intensity images
             for (int i = 0; i < std::min(4, static_cast<int>(frameDataList.size())); ++i) {
                 const FrameData& topFrame = frameDataList[i];
-                // Load the original image using the frame ID or filename if available
-                Mat image = imread(topFrame.filename);
+                // Load the original image from the temp directory using the frame ID or filename if available
+                Mat image = imread(tempFolder + "/" + topFrame.filename);
                 if (!image.empty()) {
                     // Save the top images in the night folder
                     std::string newFilename = nightFolder + "/top_yellow_frame_" + std::to_string(i + 1) + ".jpg";
@@ -207,12 +210,10 @@ int main() {
             }
         }
 
-        // Cleanup
+        // Release resources
         videoWriter.release();
         cam.stopCamera();
-        destroyAllWindows();
-    } else {
-        std::cerr << "Error: Camera initialization failed." << std::endl;
     }
+
     return 0;
 }
