@@ -12,10 +12,14 @@ using namespace cv;
 // Struct to hold frame data
 struct FrameData {
     int frameID;
-    double bluePercentage;
-    double greenPercentage;
-    double yellowPercentage;
-    double blackPercentage;
+    int blueCount;
+    int greenCount;
+    int yellowCount;
+    int blackCount;
+    double bluePercentage;    // Percentage of blue pixels
+    double greenPercentage;   // Percentage of green pixels
+    double yellowPercentage;  // Percentage of yellow pixels
+    double blackPercentage;    // Percentage of black pixels
     time_t timestamp;  // Timestamp for the frame
     char filename[50]; // Filename for saving the image
 };
@@ -33,14 +37,11 @@ void saveFrameData(const std::vector<FrameData>& frames, const std::string& file
     }
 }
 
-// Function to calculate color intensity percentages
+// Function to calculate color intensity and percentages
 void calculateColorIntensity(const Mat& image, FrameData& data) {
     // Convert to HSV for color analysis
     Mat hsv;
     cvtColor(image, hsv, COLOR_BGR2HSV);
-
-    // Get total number of pixels
-    int totalPixels = image.rows * image.cols;
 
     // Define color ranges in HSV
     int lower_blue[] = {110, 50, 70};
@@ -59,11 +60,20 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
     inRange(hsv, Scalar(lower_yellow[0], lower_yellow[1], lower_yellow[2]), Scalar(upper_yellow[0], upper_yellow[1], upper_yellow[2]), mask_yellow);
     inRange(hsv, Scalar(lower_black[0], lower_black[1], lower_black[2]), Scalar(upper_black[0], upper_black[1], upper_black[2]), mask_black);
 
-    // Calculate percentages
-    data.bluePercentage = (static_cast<double>(countNonZero(mask_blue)) / totalPixels) * 100.0;
-    data.greenPercentage = (static_cast<double>(countNonZero(mask_green)) / totalPixels) * 100.0;
-    data.yellowPercentage = (static_cast<double>(countNonZero(mask_yellow)) / totalPixels) * 100.0;
-    data.blackPercentage = (static_cast<double>(countNonZero(mask_black)) / totalPixels) * 100.0;
+    // Count colors
+    data.blueCount = countNonZero(mask_blue);
+    data.greenCount = countNonZero(mask_green);
+    data.yellowCount = countNonZero(mask_yellow);
+    data.blackCount = countNonZero(mask_black);
+    
+    // Calculate total pixels in the image
+    int totalPixels = image.rows * image.cols;
+
+    // Calculate color percentages
+    data.bluePercentage = (static_cast<double>(data.blueCount) / totalPixels) * 100;
+    data.greenPercentage = (static_cast<double>(data.greenCount) / totalPixels) * 100;
+    data.yellowPercentage = (static_cast<double>(data.yellowCount) / totalPixels) * 100;
+    data.blackPercentage = (static_cast<double>(data.blackCount) / totalPixels) * 100;
 }
 
 // Function to create a directory if it does not exist
@@ -98,7 +108,7 @@ int main() {
     int ret = cam.initCamera();
     cam.configureStill(width, height, formats::RGB888, 1, 0);
     ControlList controls_;
-    int64_t frame_time = 1000000 / 10;
+    int64_t frame_time = 1000000 / 60;
     controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
     controls_.set(controls::Brightness, 0.5);
     controls_.set(controls::Contrast, 1.5);
@@ -136,7 +146,7 @@ int main() {
             data.timestamp = time(0);
             snprintf(data.filename, sizeof(data.filename), "frame_%d.jpg", frame_count);
             
-            // Calculate color intensities
+            // Calculate color intensities and percentages
             calculateColorIntensity(im, data);
             frameDataList.push_back(data); // Store frame data in a list
 
@@ -150,24 +160,24 @@ int main() {
         // Save frame data to a binary file
         saveFrameData(frameDataList, binaryFile);
 
-        // Sort frames based on blue percentage
+        // Sort frames based on blue intensity
         std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
-            return a.bluePercentage > b.bluePercentage; // Sort in descending order
+            return a.blueCount > b.blueCount; // Sort in descending order
         });
 
-        // Determine if it's day or night based on black pixel percentage
+        // Determine if it's day or night based on black pixels
         const int totalFrames = frameDataList.size();
-        double totalBlackPercentage = 0;
+        int totalBlackCount = 0;
 
         for (const FrameData& frame : frameDataList) {
-            totalBlackPercentage += frame.blackPercentage;
+            totalBlackCount += frame.blackCount;
         }
 
-        // Calculate the average percentage of black pixels
-        double averageBlackPercentage = totalBlackPercentage / totalFrames;
+        // Calculate the percentage of black pixels
+        double blackPixelPercentage = (static_cast<double>(totalBlackCount) / (totalFrames * width * height)) * 100;
 
-        if (averageBlackPercentage < 50.0) { // Daytime condition
-            // Save the top 4 highest blue percentage images
+        if (blackPixelPercentage < 50.0) { // Daytime condition
+            // Save the top 4 highest blue intensity images
             for (int i = 0; i < std::min(4, static_cast<int>(frameDataList.size())); ++i) {
                 const FrameData& topFrame = frameDataList[i];
                 // Load the original image using the frame ID or filename if available
@@ -179,12 +189,12 @@ int main() {
                 }
             }
         } else { // Nighttime condition
-            // Sort frames based on yellow percentage
+            // Sort frames based on yellow intensity
             std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
-                return a.yellowPercentage > b.yellowPercentage; // Sort in descending order
+                return a.yellowCount > b.yellowCount; // Sort in descending order
             });
 
-            // Save the top 4 highest yellow percentage images
+            // Save the top 4 highest yellow intensity images
             for (int i = 0; i < std::min(4, static_cast<int>(frameDataList.size())); ++i) {
                 const FrameData& topFrame = frameDataList[i];
                 // Load the original image using the frame ID or filename if available
@@ -197,10 +207,12 @@ int main() {
             }
         }
 
-        // Release video writer
+        // Cleanup
         videoWriter.release();
         cam.stopCamera();
+        destroyAllWindows();
+    } else {
+        std::cerr << "Error: Camera initialization failed." << std::endl;
     }
-
     return 0;
 }
