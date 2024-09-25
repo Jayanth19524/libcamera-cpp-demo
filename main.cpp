@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <sys/stat.h>
+#include <iostream>
 
 using namespace cv;
 
@@ -26,6 +27,11 @@ struct FrameData {
     double brownPercentage;
     time_t timestamp;
     char filename[50];
+
+    // Overloading equality operator to compare FrameData objects
+    bool operator==(const FrameData& other) const {
+        return frameID == other.frameID;
+    }
 };
 
 // Function to save frame data to a binary file
@@ -185,7 +191,6 @@ int main() {
     LibCamera cam;
     uint32_t width = 1920;
     uint32_t height = 1080;
-    uint32_t stride;
     char key;
     const int capture_duration = 30;
     const std::string videoFile = "output_video.mp4";
@@ -204,10 +209,6 @@ int main() {
 
     int ret = cam.initCamera();
     cam.configureStill(width, height, formats::RGB888, 1, 0);
-    ControlList controls_;
-    int64_t frame_time = 1000000 / 60;
-    controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
-
     cam.startCamera();
 
     std::vector<FrameData> frameDataList;
