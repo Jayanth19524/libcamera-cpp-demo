@@ -83,9 +83,10 @@ int main() {
     const std::string videoFile = "output_video.mp4"; // Output video file
     const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
     const std::string dayFolder = "day"; // Directory for day frames
-
+    const std::string nightFolder = "day";
     // Create the "day" directory
     createDirectory(dayFolder);
+    createDirectory(nightFolder);
 
     // Create a window for displaying the camera feed
     cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
@@ -187,7 +188,7 @@ int main() {
                 Mat image = imread(topFrame.filename);
                 if (!image.empty()) {
                     // Save the top images in the day folder
-                    std::string newFilename = dayFolder + "/top_yellow_frame_" + std::to_string(i + 1) + ".jpg";
+                    std::string newFilename = nightFolder + "/top_yellow_frame_" + std::to_string(i + 1) + ".jpg";
                     imwrite(newFilename, image);
                 }
             }
