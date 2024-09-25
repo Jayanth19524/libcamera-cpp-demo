@@ -208,7 +208,6 @@ int main() {
     cv::resizeWindow("libcamera-demo", width, height);
 
     int ret = cam.initCamera();
-    cam.configureStill(width, height, formats::RGB888, 1, 0);
     cam.startCamera();
 
     std::vector<FrameData> frameDataList;
