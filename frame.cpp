@@ -2,7 +2,7 @@
 #include <fstream>
 #include <vector>
 #include <cstring>
-#include "LibCamera.h" // Ensure to include your LibCamera header
+#include <ctime>
 
 // Struct to hold frame data (same as defined in the main program)
 struct FrameData {
