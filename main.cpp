@@ -47,7 +47,7 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
     int lower_yellow[] = {20, 100, 100};
     int upper_yellow[] = {30, 255, 255};
     int lower_black[] = {0, 0, 0};
-    int upper_black[] = {180, 255, 30};
+    int upper_black[] = {180, 255, 80};
 
     // Create masks and count colors
     Mat mask_blue, mask_green, mask_yellow, mask_black;
