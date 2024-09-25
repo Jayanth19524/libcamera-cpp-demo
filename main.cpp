@@ -117,14 +117,18 @@ int main() {
                 continue;
 
             Mat im(height, width, CV_8UC3, frameData.imageData, stride);
-            imshow("libcamera-demo", im);
+            // Denoise the captured frame
+            Mat denoisedImage;
+            fastNlMeansDenoisingColored(im, denoisedImage, 10, 10, 7, 21);
+            
+            imshow("libcamera-demo", denoisedImage);
             key = waitKey(1);
             if (key == 'q') {
                 break;
             }
 
             // Write frame to video
-            videoWriter.write(im);
+            videoWriter.write(denoisedImage);
 
             // Record FrameData with timestamp
             FrameData data;
@@ -133,11 +137,11 @@ int main() {
             snprintf(data.filename, sizeof(data.filename), "frame_%d.jpg", frame_count);
             
             // Calculate color intensities
-            calculateColorIntensity(im, data);
+            calculateColorIntensity(denoisedImage, data);
             frameDataList.push_back(data); // Store frame data in a list
 
-            // Save the frame image as well
-            imwrite(data.filename, im); // Save the current frame as an image file
+            // Save the denoised frame image as well
+            imwrite(data.filename, denoisedImage); // Save the current frame as an image file
 
             frame_count++;
             cam.returnFrameBuffer(frameData);
@@ -197,6 +201,6 @@ int main() {
         cam.stopCamera();
         videoWriter.release();
     }
-    cam.closeCamera();
+
     return 0;
 }
