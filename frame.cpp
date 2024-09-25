@@ -1,53 +1,52 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <ctime>
+#include <iomanip>
 
 struct FrameData {
     int frameID;
-    int blueCount;
-    int greenCount;
-    int yellowCount;
-    int blackCount;
-    time_t timestamp;  // Timestamp for the frame
-    char filename[50]; // Filename for saving the image
+    double bluePercentage;
+    double greenPercentage;
+    double yellowPercentage;
+    double blackPercentage;
+    time_t timestamp;
+    char filename[50];
 };
 
-// Function to read frame data from a binary file
-std::vector<FrameData> readFrameData(const std::string& filename) {
-    std::vector<FrameData> frames;
+void readFrameData(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
-    if (file.is_open()) {
-        while (true) {
-            FrameData frame;
-            file.read(reinterpret_cast<char*>(&frame), sizeof(FrameData));
-            if (file.eof()) break; // Break on end of file
-            frames.push_back(frame);
-        }
-        file.close();
-    } else {
-        std::cerr << "Error: Unable to open file for reading." << std::endl;
+    if (!file) {
+        std::cerr << "Error: Unable to open file." << std::endl;
+        return;
     }
-    return frames;
+
+    std::vector<FrameData> frames;
+    FrameData frame;
+
+    while (file.read(reinterpret_cast<char*>(&frame), sizeof(FrameData))) {
+        frames.push_back(frame);
+    }
+
+    file.close();
+
+    // Display the data
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "Frame Data:" << std::endl;
+    std::cout << "-------------------------------------------" << std::endl;
+    for (const auto& f : frames) {
+        std::cout << "Frame ID: " << f.frameID << std::endl;
+        std::cout << "Timestamp: " << ctime(&f.timestamp); // Convert to readable format
+        std::cout << "Blue Percentage: " << f.bluePercentage << "%" << std::endl;
+        std::cout << "Green Percentage: " << f.greenPercentage << "%" << std::endl;
+        std::cout << "Yellow Percentage: " << f.yellowPercentage << "%" << std::endl;
+        std::cout << "Black Percentage: " << f.blackPercentage << "%" << std::endl;
+        std::cout << "Filename: " << f.filename << std::endl;
+        std::cout << "-------------------------------------------" << std::endl;
+    }
 }
 
 int main() {
-    const std::string binaryFile = "frame_data.bin"; // Name of the binary file
-
-    // Read the frame data from the binary file
-    std::vector<FrameData> frames = readFrameData(binaryFile);
-
-    // Display the frame data
-    for (const auto& frame : frames) {
-        std::cout << "Frame ID: " << frame.frameID << std::endl;
-        std::cout << "Timestamp: " << ctime(&frame.timestamp); // Convert timestamp to human-readable form
-        std::cout << "Blue Count: " << frame.blueCount << std::endl;
-        std::cout << "Green Count: " << frame.greenCount << std::endl;
-        std::cout << "Yellow Count: " << frame.yellowCount << std::endl;
-        std::cout << "Black Count: " << frame.blackCount << std::endl;
-        std::cout << "Filename: " << frame.filename << std::endl;
-        std::cout << "------------------------------------" << std::endl;
-    }
-
+    std::string filename = "frame_data.bin"; // Specify the path to your binary file
+    readFrameData(filename);
     return 0;
 }
