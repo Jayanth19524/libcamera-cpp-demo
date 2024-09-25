@@ -216,7 +216,7 @@ int main() {
         LibcameraOutData outdata = cam.captureBuffer();
         Mat image(Size(width, height), CV_8UC3, (void*)outdata.imageData);
         Mat outputImage;
-        resize(image, outputImage, Size(width, height));
+        resize(image, outputImage, cv::Size(width, height));
 
         // Show the output image
         imshow("libcamera-demo", outputImage);
