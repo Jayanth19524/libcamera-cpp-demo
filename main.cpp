@@ -81,12 +81,14 @@ int LibCamera::startCamera() {
     }
 
     allocator_ = std::make_unique<FrameBufferAllocator>(camera_);
-    unsigned int numBuffers = allocator_->allocate(config_->at(0).stream()).size();
+    if (allocator_->allocate(config_->at(0).stream()) < 0) {
+        std::cerr << "Failed to allocate buffers" << std::endl;
+        return -1;
+    }
 
-    for (unsigned int i = 0; i < numBuffers; ++i) {
+    for (auto &buffer : allocator_->buffers(config_->at(0).stream())) {
         std::unique_ptr<Request> request = camera_->createRequest();
-        const auto &buffers = allocator_->buffers(config_->at(0).stream());
-        request->addBuffer(config_->at(0).stream(), buffers[i].get());
+        request->addBuffer(config_->at(0).stream(), buffer.get());
         requests_.push_back(std::move(request));
     }
 
@@ -109,19 +111,25 @@ void LibCamera::captureFrames(int duration) {
         Request *request = requests_[frame_count_ % requests_.size()].get();
         camera_->queueRequest(request);
         
-        // Wait for the request to complete
-        request->wait();
+        // Wait for the request to be completed by checking the request's status
+        while (request->status() == Request::Pending) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Sleep briefly to avoid busy-wait
+        }
 
         // Process the frame
         const auto &buffers = request->buffers();
         for (const auto &[stream, buffer] : buffers) {
-            const FrameBuffer::Plane &plane = buffer->planes()[0];
+            if (buffer) {
+                // Map the buffer to access the image data
+                const FrameBuffer::Plane &plane = buffer->planes()[0];
+                auto map = buffer->map();
 
-            // Convert to OpenCV Mat
-            cv::Mat img(cv::Size(1920, 1080), CV_8UC3, static_cast<void *>(plane.memory()), cv::Mat::AUTO_STEP);
-            std::string filename = "frame_" + std::to_string(frame_count_) + ".jpg";
-            cv::imwrite(filename, img); // Save image
-            std::cout << "Saved: " << filename << std::endl;
+                // Convert to OpenCV Mat
+                cv::Mat img(cv::Size(1920, 1080), CV_8UC3, static_cast<void *>(map.data), cv::Mat::AUTO_STEP);
+                std::string filename = "frame_" + std::to_string(frame_count_) + ".jpg";
+                cv::imwrite(filename, img); // Save image
+                std::cout << "Saved: " << filename << std::endl;
+            }
         }
 
         frame_count_++;
