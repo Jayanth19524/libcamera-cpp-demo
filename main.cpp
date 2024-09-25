@@ -117,18 +117,14 @@ int main() {
                 continue;
 
             Mat im(height, width, CV_8UC3, frameData.imageData, stride);
-            // Denoise the captured frame
-            Mat denoisedImage;
-            fastNlMeansDenoisingColored(im, denoisedImage, 10, 10, 7, 21);
-            
-            imshow("libcamera-demo", denoisedImage);
+            imshow("libcamera-demo", im);
             key = waitKey(1);
             if (key == 'q') {
                 break;
             }
 
             // Write frame to video
-            videoWriter.write(denoisedImage);
+            videoWriter.write(im);
 
             // Record FrameData with timestamp
             FrameData data;
@@ -137,11 +133,11 @@ int main() {
             snprintf(data.filename, sizeof(data.filename), "frame_%d.jpg", frame_count);
             
             // Calculate color intensities
-            calculateColorIntensity(denoisedImage, data);
+            calculateColorIntensity(im, data);
             frameDataList.push_back(data); // Store frame data in a list
 
-            // Save the denoised frame image as well
-            imwrite(data.filename, denoisedImage); // Save the current frame as an image file
+            // Save the frame image as well
+            imwrite(data.filename, im); // Save the current frame as an image file
 
             frame_count++;
             cam.returnFrameBuffer(frameData);
@@ -166,7 +162,7 @@ int main() {
         // Calculate the percentage of black pixels
         double blackPixelPercentage = (static_cast<double>(totalBlackCount) / (totalFrames * width * height)) * 100;
 
-        if (blackPixelPercentage < 70.0) { // Daytime condition
+        if (blackPixelPercentage < 50.0) { // Daytime condition
             // Save the top 4 highest blue intensity images
             for (int i = 0; i < std::min(4, static_cast<int>(frameDataList.size())); ++i) {
                 const FrameData& topFrame = frameDataList[i];
@@ -201,6 +197,6 @@ int main() {
         cam.stopCamera();
         videoWriter.release();
     }
-
+    cam.closeCamera();
     return 0;
 }
