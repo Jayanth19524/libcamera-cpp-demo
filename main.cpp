@@ -6,7 +6,6 @@
 #include <vector>
 #include <algorithm>
 #include <sys/stat.h>
-#include <iostream>
 
 using namespace cv;
 
@@ -17,21 +16,16 @@ struct FrameData {
     int greenCount;
     int yellowCount;
     int blackCount;
-    int whiteCount;
-    int brownCount;
-    double bluePercentage;
-    double greenPercentage;
-    double yellowPercentage;
-    double blackPercentage;
-    double whitePercentage;
-    double brownPercentage;
-    time_t timestamp;
-    char filename[50];
-
-    // Overloading equality operator to compare FrameData objects
-    bool operator==(const FrameData& other) const {
-        return frameID == other.frameID;
-    }
+    int whiteCount;   // New field for white pixels
+    int brownCount;   // New field for brown pixels
+    double bluePercentage;    // Percentage of blue pixels
+    double greenPercentage;   // Percentage of green pixels
+    double yellowPercentage;  // Percentage of yellow pixels
+    double blackPercentage;   // Percentage of black pixels
+    double whitePercentage;   // Percentage of white pixels
+    double brownPercentage;   // Percentage of brown pixels
+    time_t timestamp;  // Timestamp for the frame
+    char filename[50]; // Filename for saving the image
 };
 
 // Function to save frame data to a binary file
@@ -62,9 +56,9 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
     int upper_yellow[] = {30, 255, 255};
     int lower_black[] = {0, 0, 0};
     int upper_black[] = {180, 255, 80};
-    int lower_white[] = {0, 0, 200};
+    int lower_white[] = {0, 0, 200};   // New range for white
     int upper_white[] = {180, 30, 255};
-    int lower_brown[] = {10, 100, 20};
+    int lower_brown[] = {10, 100, 20}; // New range for brown
     int upper_brown[] = {20, 255, 200};
 
     // Create masks and count colors
@@ -83,7 +77,7 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
     data.blackCount = countNonZero(mask_black);
     data.whiteCount = countNonZero(mask_white);
     data.brownCount = countNonZero(mask_brown);
-
+    
     // Calculate total pixels in the image
     int totalPixels = image.rows * image.cols;
 
@@ -100,89 +94,8 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
 void createDirectory(const std::string& dirName) {
     struct stat st;
     if (stat(dirName.c_str(), &st) != 0) {
-        mkdir(dirName.c_str(), 0777);
+        mkdir(dirName.c_str(), 0777); // Create directory
     }
-}
-
-// Function to handle day scenario frame selection
-std::vector<FrameData> selectDayFrames(const std::vector<FrameData>& frames) {
-    std::vector<FrameData> selectedFrames;
-
-    // First priority: Select frames with more than 30% blue pixels
-    for (const auto& frame : frames) {
-        if (frame.bluePercentage > 30) {
-            selectedFrames.push_back(frame);
-        }
-    }
-
-    // If blue frames are found, also consider green frames for priority
-    if (!selectedFrames.empty()) {
-        for (const auto& frame : frames) {
-            if (frame.greenPercentage > 30 && std::find(selectedFrames.begin(), selectedFrames.end(), frame) == selectedFrames.end()) {
-                selectedFrames.push_back(frame);
-            }
-        }
-    }
-
-    // Fallback 1: Select frames with unique colors (high diversity)
-    if (selectedFrames.empty()) {
-        for (const auto& frame : frames) {
-            double uniqueColorPercentage = frame.bluePercentage + frame.greenPercentage + frame.yellowPercentage + frame.brownPercentage;
-            if (uniqueColorPercentage > 20) {
-                selectedFrames.push_back(frame);
-            }
-        }
-    }
-
-    // Fallback 2: Sort by white percentage if blue percentage is above 30
-    if (selectedFrames.empty()) {
-        for (const auto& frame : frames) {
-            if (frame.bluePercentage > 30) {
-                selectedFrames.push_back(frame);
-            }
-        }
-        std::sort(selectedFrames.begin(), selectedFrames.end(), [](const FrameData& a, const FrameData& b) {
-            return a.whitePercentage > b.whitePercentage;
-        });
-    }
-
-    return selectedFrames;
-}
-
-// Function to handle night scenario frame selection
-std::vector<FrameData> selectNightFrames(const std::vector<FrameData>& frames) {
-    std::vector<FrameData> selectedFrames;
-
-    // First priority: Select frames with more than 30% yellow and black pixels
-    for (const auto& frame : frames) {
-        if (frame.yellowPercentage > 30 || frame.blackPercentage > 30) {
-            selectedFrames.push_back(frame);
-        }
-    }
-
-    // Fallback 1: Select frames with unique colors (high diversity)
-    if (selectedFrames.empty()) {
-        for (const auto& frame : frames) {
-            double uniqueColorPercentage = frame.bluePercentage + frame.greenPercentage + frame.yellowPercentage + frame.brownPercentage;
-            if (uniqueColorPercentage > 20) {
-                selectedFrames.push_back(frame);
-            }
-        }
-    }
-
-    // Fallback 2: Sort by blue percentage if yellow or black percentage is high
-    if (selectedFrames.empty()) {
-        for (const auto& frame : frames) {
-            if (frame.yellowPercentage > 30 || frame.blackPercentage > 30) {
-                selectedFrames.push_back(frame);
-            }
-        }
-        std::sort(selectedFrames.begin(), selectedFrames.end(), [](const FrameData& a, const FrameData& b) {
-            return a.bluePercentage > b.bluePercentage;
-        });
-    }
-
-    return selectedFrames;
 }
 
 int main() {
@@ -191,73 +104,105 @@ int main() {
     LibCamera cam;
     uint32_t width = 1920;
     uint32_t height = 1080;
+    uint32_t stride;
     char key;
-    const int capture_duration = 30;
-    const std::string videoFile = "output_video.mp4";
-    const std::string binaryFile = "frame_data.bin";
-    const std::string dayFolder = "day";
-    const std::string nightFolder = "night";
-    const std::string tempFolder = "temp";
+    const int capture_duration = 30; // Capture for 30 seconds
+    const std::string videoFile = "output_video.mp4"; // Output video file
+    const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
+    const std::string dayFolder = "day"; // Directory for day frames
+    const std::string nightFolder = "night"; // Directory for night frames
+    const std::string tempFolder = "temp"; // Directory for temp frames
 
     // Create necessary directories
     createDirectory(dayFolder);
     createDirectory(nightFolder);
-    createDirectory(tempFolder);
+    createDirectory(tempFolder); // Create the temp directory
 
+    // Create a window for displaying the camera feed
     cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
-    cv::resizeWindow("libcamera-demo", width, height);
+    cv::resizeWindow("libcamera-demo", width, height); 
 
     int ret = cam.initCamera();
-    cam.startCamera();
+    cam.configureStill(width, height, formats::RGB888, 1, 0);
+    ControlList controls_;
+    int64_t frame_time = 1000000 / 60;
+    controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
+    controls_.set(controls::Brightness, 0.5);
+    controls_.set(controls::Contrast, 1.5);
+    controls_.set(controls::ExposureTime, 20000);
+    cam.set(controls_);
 
-    std::vector<FrameData> frameDataList;
+    if (!ret) {
+        bool flag;
+        LibcameraOutData frameData;
+        cam.startCamera();
+        cam.VideoStream(&width, &height, &stride);
 
-    while (time(0) - start_time < capture_duration) {
-        LibcameraOutData outdata = cam.captureBuffer();
-        Mat image(Size(width, height), CV_8UC3, (void*)outdata.imageData);
-        Mat outputImage;
-        resize(image, outputImage, cv::Size(width, height));
+        // Initialize VideoWriter
+        cv::VideoWriter videoWriter(videoFile, cv::VideoWriter::fourcc('H', '2', '6', '4'), 30, cv::Size(width, height), true);
+        std::vector<FrameData> frameDataList;
 
-        // Show the output image
-        imshow("libcamera-demo", outputImage);
+        while (difftime(time(0), start_time) < capture_duration) {  // Run for the defined duration
+            flag = cam.readFrame(&frameData);
+            if (!flag)
+                continue;
 
-        // Save the frame to a file
-        std::string filePath = tempFolder + "/frame_" + std::to_string(frame_count) + ".jpg";
-        imwrite(filePath, outputImage);
+            Mat im(height, width, CV_8UC3, frameData.imageData, stride);
+            imshow("libcamera-demo", im);
+            key = waitKey(1);
+            if (key == 'q') {
+                break;
+            }
 
-        // Prepare FrameData and calculate color intensity
-        FrameData data;
-        data.frameID = frame_count;
-        data.timestamp = time(0);
-        snprintf(data.filename, sizeof(data.filename), "frame_%d.jpg", frame_count);
-        calculateColorIntensity(outputImage, data);
+            // Write frame to video
+            videoWriter.write(im);
 
-        frameDataList.push_back(data);
+            // Record FrameData with timestamp
+            FrameData data;
+            data.frameID = frame_count;
+            data.timestamp = time(0);
+            snprintf(data.filename, sizeof(data.filename), "frame_%d.jpg", frame_count);
+            
+            // Calculate color intensities and percentages
+            calculateColorIntensity(im, data);
+            frameDataList.push_back(data); // Store frame data in a list
 
-        frame_count++;
-    }
+            // Save the frame image in the temp directory
+            std::string tempFilename = tempFolder + "/" + data.filename; // Use temp folder for filenames
+            imwrite(tempFilename, im); // Save the current frame as an image file in temp
 
-    cam.stopCamera();
+            frame_count++;
+            cam.returnFrameBuffer(frameData);
+        }
 
-    // Save frame data to binary file
-    saveFrameData(frameDataList, binaryFile);
+        // Save frame data to a binary file
+        saveFrameData(frameDataList, binaryFile);
 
-    // Select top frames for day scenario
-    std::vector<FrameData> dayFrames = selectDayFrames(frameDataList);
-    for (size_t i = 0; i < std::min<size_t>(5, dayFrames.size()); i++) {
-        const FrameData& frame = dayFrames[i];
-        std::string srcPath = tempFolder + "/" + frame.filename;
-        std::string destPath = dayFolder + "/" + frame.filename;
-        rename(srcPath.c_str(), destPath.c_str()); // Move the file to the day directory
-    }
+        // Sort frames based on blue intensity
+        std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
+            return a.blueCount > b.blueCount; // Sort in descending order
+        });
 
-    // Select top frames for night scenario
-    std::vector<FrameData> nightFrames = selectNightFrames(frameDataList);
-    for (size_t i = 0; i < std::min<size_t>(5, nightFrames.size()); i++) {
-        const FrameData& frame = nightFrames[i];
-        std::string srcPath = tempFolder + "/" + frame.filename;
-        std::string destPath = nightFolder + "/" + frame.filename;
-        rename(srcPath.c_str(), destPath.c_str()); // Move the file to the night directory
+        // Determine if it's day or night based on black pixels
+        const int totalFrames = frameDataList.size();
+        int totalBlackCount = 0;
+
+        for (const FrameData& frame : frameDataList) {
+            totalBlackCount += frame.blackCount;
+        }
+        double avgBlackCount = static_cast<double>(totalBlackCount) / totalFrames;
+
+        std::string folderToSave = avgBlackCount > 50000 ? nightFolder : dayFolder;
+
+        // Copy the top 5 frames to the appropriate directory
+        for (size_t i = 0; i < std::min<size_t>(5, frameDataList.size()); i++) {
+            const FrameData& frame = frameDataList[i];
+            std::string srcPath = tempFolder + "/" + frame.filename;
+            std::string destPath = folderToSave + "/" + frame.filename;
+            rename(srcPath.c_str(), destPath.c_str()); // Move the file to the appropriate directory
+        }
+
+        cam.stopCamera();
     }
 
     return 0;
