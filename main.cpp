@@ -83,7 +83,7 @@ int main() {
     const std::string videoFile = "output_video.mp4"; // Output video file
     const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
     const std::string dayFolder = "day"; // Directory for day frames
-    const std::string nightFolder = "day";
+    const std::string nightFolder = "night";
     // Create the "day" directory
     createDirectory(dayFolder);
     createDirectory(nightFolder);
