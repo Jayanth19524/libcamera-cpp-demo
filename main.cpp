@@ -108,14 +108,28 @@ int main() {
     const int capture_duration = 30;
     const std::string videoFile = "output_video.mp4";
     const std::string binaryFile = "frame_data.bin";
+    // Define your folder names
     const std::string dayFolder = "day";
     const std::string nightFolder = "night";
     const std::string tempFolder = "temp";
+
+    // Function to delete a directory if it exists
+    void deleteDirectoryIfExists(const std::string& dirName) {
+        if (std::filesystem::exists(dirName)) {
+            std::filesystem::remove_all(dirName); // Deletes the directory and its contents
+        }
+    }
+
+    // Delete existing directories before creating new ones
+    deleteDirectoryIfExists(dayFolder);
+    deleteDirectoryIfExists(nightFolder);
+    deleteDirectoryIfExists(tempFolder);
 
     // Create necessary directories
     createDirectory(dayFolder);
     createDirectory(nightFolder);
     createDirectory(tempFolder);
+
 
     // Create a window for displaying the camera feed
     cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
@@ -193,26 +207,42 @@ int main() {
             if (frame.bluePercentage > 30.0) {
                 isDay = true;
                 break;
+                std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
+                return a.greenPercentage > b.greenPercentage 
+            });
             }
-            if (frame.greenPercentage > 30.0) {
-                isDay = true;
-                break;
-            }
+
+           
         }
 
         // If no blue/green dominant frame is found, fallback to unique color selection
         if (!isDay) {
-            std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
-                double aUniqueColorPercentage = 100.0 - (a.bluePercentage + a.greenPercentage + a.whitePercentage);
-                double bUniqueColorPercentage = 100.0 - (b.bluePercentage + b.greenPercentage + b.whitePercentage);
-                return aUniqueColorPercentage > bUniqueColorPercentage; // Sort by unique color percentage
-            });
+    // Check if any of the relevant color counts are non-zero
+    
+
+    for (const FrameData& frame : frameDataList) {
+        if (frame.blueCount > 0 || frame.greenCount > 0 || frame.whiteCount > 0) {
+            isDay = true;
+            break;
         }
+    }
+
+    // Proceed to sort by unique color percentage only if there are non-zero color counts
+    if (hasNonZeroColors) {
+        std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
+            double aUniqueColorPercentage = 100.0 - (a.bluePercentage + a.greenPercentage + a.whitePercentage);
+            double bUniqueColorPercentage = 100.0 - (b.bluePercentage + b.greenPercentage + b.whitePercentage);
+            return aUniqueColorPercentage > bUniqueColorPercentage; // Sort by unique color percentage
+        });
+
+        
+    }
+}
 
         // If still no day frame, select frames with blue percentage > 30% and sort by white percentage
         if (!isDay) {
             std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
-                return a.bluePercentage > 30.0 && a.whitePercentage > b.whitePercentage;
+                return a.whitePercentage < b.whitePercentage;
             });
         }
 
