@@ -97,11 +97,10 @@ void createDirectory(const std::string& dirName) {
     }
 }
 // Function to delete a directory if it exists
-    void deleteDirectoryIfExists(const std::string& dirName) {
-        if (std::filesystem::exists(dirName)) {
-            std::filesystem::remove_all(dirName); // Deletes the directory and its contents
-        }
-    }
+void deleteDirectoryIfExists(const std::string& dirName) {
+    std::string command = "rm -rf " + dirName; // Unix command to remove directory
+    system(command.c_str()); // Execute the command
+}
 
 int main() {
     time_t start_time = time(0);
