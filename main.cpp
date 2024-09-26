@@ -16,14 +16,14 @@ struct FrameData {
     int greenCount;
     int yellowCount;
     int blackCount;
-    int whiteCount;   // New field for white pixels
-    int brownCount;   // New field for brown pixels
+    int brownCount;  // Added brown color count
+    int whiteCount;  // Added white color count
     double bluePercentage;    // Percentage of blue pixels
     double greenPercentage;   // Percentage of green pixels
     double yellowPercentage;  // Percentage of yellow pixels
     double blackPercentage;   // Percentage of black pixels
-    double whitePercentage;   // Percentage of white pixels
     double brownPercentage;   // Percentage of brown pixels
+    double whitePercentage;   // Percentage of white pixels
     time_t timestamp;  // Timestamp for the frame
     char filename[50]; // Filename for saving the image
 };
@@ -56,28 +56,28 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
     int upper_yellow[] = {30, 255, 255};
     int lower_black[] = {0, 0, 0};
     int upper_black[] = {180, 255, 80};
-    int lower_white[] = {0, 0, 200};   // New range for white
-    int upper_white[] = {180, 30, 255};
-    int lower_brown[] = {10, 100, 20}; // New range for brown
+    int lower_brown[] = {10, 100, 20}; // Brown color range in HSV
     int upper_brown[] = {20, 255, 200};
+    int lower_white[] = {0, 0, 200};   // White color range in HSV
+    int upper_white[] = {180, 20, 255};
 
     // Create masks and count colors
-    Mat mask_blue, mask_green, mask_yellow, mask_black, mask_white, mask_brown;
+    Mat mask_blue, mask_green, mask_yellow, mask_black, mask_brown, mask_white;
     inRange(hsv, Scalar(lower_blue[0], lower_blue[1], lower_blue[2]), Scalar(upper_blue[0], upper_blue[1], upper_blue[2]), mask_blue);
     inRange(hsv, Scalar(lower_green[0], lower_green[1], lower_green[2]), Scalar(upper_green[0], upper_green[1], upper_green[2]), mask_green);
     inRange(hsv, Scalar(lower_yellow[0], lower_yellow[1], lower_yellow[2]), Scalar(upper_yellow[0], upper_yellow[1], upper_yellow[2]), mask_yellow);
     inRange(hsv, Scalar(lower_black[0], lower_black[1], lower_black[2]), Scalar(upper_black[0], upper_black[1], upper_black[2]), mask_black);
-    inRange(hsv, Scalar(lower_white[0], lower_white[1], lower_white[2]), Scalar(upper_white[0], upper_white[1], upper_white[2]), mask_white);
     inRange(hsv, Scalar(lower_brown[0], lower_brown[1], lower_brown[2]), Scalar(upper_brown[0], upper_brown[1], upper_brown[2]), mask_brown);
+    inRange(hsv, Scalar(lower_white[0], lower_white[1], lower_white[2]), Scalar(upper_white[0], upper_white[1], upper_white[2]), mask_white);
 
     // Count colors
     data.blueCount = countNonZero(mask_blue);
     data.greenCount = countNonZero(mask_green);
     data.yellowCount = countNonZero(mask_yellow);
     data.blackCount = countNonZero(mask_black);
-    data.whiteCount = countNonZero(mask_white);
     data.brownCount = countNonZero(mask_brown);
-    
+    data.whiteCount = countNonZero(mask_white);
+
     // Calculate total pixels in the image
     int totalPixels = image.rows * image.cols;
 
@@ -86,8 +86,8 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
     data.greenPercentage = (static_cast<double>(data.greenCount) / totalPixels) * 100;
     data.yellowPercentage = (static_cast<double>(data.yellowCount) / totalPixels) * 100;
     data.blackPercentage = (static_cast<double>(data.blackCount) / totalPixels) * 100;
-    data.whitePercentage = (static_cast<double>(data.whiteCount) / totalPixels) * 100;
     data.brownPercentage = (static_cast<double>(data.brownCount) / totalPixels) * 100;
+    data.whitePercentage = (static_cast<double>(data.whiteCount) / totalPixels) * 100;
 }
 
 // Function to create a directory if it does not exist
@@ -185,21 +185,15 @@ int main() {
 
         // Determine if it's day or night based on black pixels
         const int totalFrames = frameDataList.size();
-        int totalBlackCount = 0;
-
-        for (const FrameData& frame : frameDataList) {
-            totalBlackCount += frame.blackCount;
-        }
-        double avgBlackCount = static_cast<double>(totalBlackCount) / totalFrames;
-
-        std::string folderToSave = avgBlackCount > 50000 ? nightFolder : dayFolder;
-
-        // Copy the top 5 frames to the appropriate directory
-        for (size_t i = 0; i < std::min<size_t>(5, frameDataList.size()); i++) {
-            const FrameData& frame = frameDataList[i];
-            std::string srcPath = tempFolder + "/" + frame.filename;
-            std::string destPath = folderToSave + "/" + frame.filename;
-            rename(srcPath.c_str(), destPath.c_str()); // Move the file to the appropriate directory
+        int blackThreshold = 30;  // Set a black pixel threshold (in percentage)
+        for (int i = 0; i < std::min(5, totalFrames); ++i) { // Store only top 5 frames
+            if (frameDataList[i].blackPercentage < blackThreshold) {
+                std::string dayFilename = dayFolder + "/" + frameDataList[i].filename;
+                std::rename((tempFolder + "/" + frameDataList[i].filename).c_str(), dayFilename.c_str());
+            } else {
+                std::string nightFilename = nightFolder + "/" + frameDataList[i].filename;
+                std::rename((tempFolder + "/" + frameDataList[i].filename).c_str(), nightFilename.c_str());
+            }
         }
 
         cam.stopCamera();
