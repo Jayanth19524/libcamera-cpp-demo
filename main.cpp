@@ -15,17 +15,17 @@ struct FrameData {
     int blueCount;
     int greenCount;
     int yellowCount;
-    int brownCount;          
+    int brownCount;
     int blackCount;
-    int whiteCount;         
-    double bluePercentage;    
-    double greenPercentage;   
-    double yellowPercentage;  
-    double brownPercentage;    
-    double blackPercentage;    
-    double whitePercentage;   
-    time_t timestamp;  
-    char filename[50]; 
+    int whiteCount;
+    double bluePercentage;
+    double greenPercentage;
+    double yellowPercentage;
+    double brownPercentage;
+    double blackPercentage;
+    double whitePercentage;
+    time_t timestamp;
+    char filename[50];
 };
 
 // Function to save frame data to a binary file
@@ -43,7 +43,6 @@ void saveFrameData(const std::vector<FrameData>& frames, const std::string& file
 
 // Function to calculate color intensity and percentages
 void calculateColorIntensity(const Mat& image, FrameData& data) {
-    // Convert to HSV for color analysis
     Mat hsv;
     cvtColor(image, hsv, COLOR_BGR2HSV);
 
@@ -66,17 +65,17 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
     inRange(hsv, Scalar(lower_blue[0], lower_blue[1], lower_blue[2]), Scalar(upper_blue[0], upper_blue[1], upper_blue[2]), mask_blue);
     inRange(hsv, Scalar(lower_green[0], lower_green[1], lower_green[2]), Scalar(upper_green[0], upper_green[1], upper_green[2]), mask_green);
     inRange(hsv, Scalar(lower_yellow[0], lower_yellow[1], lower_yellow[2]), Scalar(upper_yellow[0], upper_yellow[1], upper_yellow[2]), mask_yellow);
-    inRange(hsv, Scalar(lower_brown[0], lower_brown[1], lower_brown[2]), Scalar(upper_brown[0], upper_brown[1], upper_brown[2]), mask_brown); // Added brown mask
+    inRange(hsv, Scalar(lower_brown[0], lower_brown[1], lower_brown[2]), Scalar(upper_brown[0], upper_brown[1], upper_brown[2]), mask_brown);
     inRange(hsv, Scalar(lower_black[0], lower_black[1], lower_black[2]), Scalar(upper_black[0], upper_black[1], upper_black[2]), mask_black);
-    inRange(hsv, Scalar(lower_white[0], lower_white[1], lower_white[2]), Scalar(upper_white[0], upper_white[1], upper_white[2]), mask_white); // Added white mask
+    inRange(hsv, Scalar(lower_white[0], lower_white[1], lower_white[2]), Scalar(upper_white[0], upper_white[1], upper_white[2]), mask_white);
 
     // Count colors
     data.blueCount = countNonZero(mask_blue);
     data.greenCount = countNonZero(mask_green);
     data.yellowCount = countNonZero(mask_yellow);
-    data.brownCount = countNonZero(mask_brown); // Count brown pixels
+    data.brownCount = countNonZero(mask_brown);
     data.blackCount = countNonZero(mask_black);
-    data.whiteCount = countNonZero(mask_white); // Count white pixels
+    data.whiteCount = countNonZero(mask_white);
 
     // Calculate total pixels in the image
     int totalPixels = image.rows * image.cols;
@@ -85,9 +84,9 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
     data.bluePercentage = (static_cast<double>(data.blueCount) / totalPixels) * 100;
     data.greenPercentage = (static_cast<double>(data.greenCount) / totalPixels) * 100;
     data.yellowPercentage = (static_cast<double>(data.yellowCount) / totalPixels) * 100;
-    data.brownPercentage = (static_cast<double>(data.brownCount) / totalPixels) * 100; // Calculate brown percentage
+    data.brownPercentage = (static_cast<double>(data.brownCount) / totalPixels) * 100;
     data.blackPercentage = (static_cast<double>(data.blackCount) / totalPixels) * 100;
-    data.whitePercentage = (static_cast<double>(data.whiteCount) / totalPixels) * 100; // Calculate white percentage
+    data.whitePercentage = (static_cast<double>(data.whiteCount) / totalPixels) * 100;
 }
 
 // Function to save the frames based on day criteria
@@ -115,26 +114,25 @@ void selectDayFrames(std::vector<FrameData>& frameDataList, std::vector<FrameDat
     } else {
         // If no frames meet the criteria, check for unique colors
         for (const auto& frame : frameDataList) {
-            // Check for unique color percentage (excluding white)
             if (frame.blueCount + frame.greenCount + frame.yellowCount + frame.brownCount + frame.blackCount > 0) {
                 selectedDayFrames.push_back(frame);
             }
         }
-    }
 
-    // If still no frames, fallback to blue and white arrangement
-    if (selectedDayFrames.empty()) {
-        for (const auto& frame : frameDataList) {
-            if (frame.bluePercentage > 30) {
-                selectedDayFrames.push_back(frame);
+        // If still no frames, fallback to blue and white arrangement
+        if (selectedDayFrames.empty()) {
+            for (const auto& frame : frameDataList) {
+                if (frame.bluePercentage > 30) {
+                    selectedDayFrames.push_back(frame);
+                }
             }
-        }
 
-        // Sort selected frames by white percentage in descending order
-        std::sort(selectedDayFrames.begin(), selectedDayFrames.end(),
-                  [](const FrameData& a, const FrameData& b) {
-                      return a.whitePercentage > b.whitePercentage;
-                  });
+            // Sort selected frames by white percentage in descending order
+            std::sort(selectedDayFrames.begin(), selectedDayFrames.end(),
+                      [](const FrameData& a, const FrameData& b) {
+                          return a.whitePercentage > b.whitePercentage;
+                      });
+        }
     }
 }
 
@@ -152,18 +150,14 @@ int main() {
     LibCamera cam;
     uint32_t width = 1920;
     uint32_t height = 1080;
-    uint32_t stride;
     char key;
     const int capture_duration = 30; // Capture for 30 seconds
-    const std::string videoFile = "output_video.mp4"; // Output video file
     const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
     const std::string dayFolder = "day"; // Directory for day frames
-    const std::string nightFolder = "night"; // Directory for night frames
     const std::string tempFolder = "temp"; // Directory for temp frames
 
     // Create necessary directories
     createDirectory(dayFolder);
-    createDirectory(nightFolder);
     createDirectory(tempFolder); // Create the temp directory
 
     // Create a window for displaying the camera feed
@@ -184,6 +178,7 @@ int main() {
         bool flag;
         LibcameraOutData frameData;
         std::vector<FrameData> frameDataList; // Store frame data
+
         while (difftime(time(0), start_time) < capture_duration) {
             // Capture frame
             flag = cam.capture(frameData);
