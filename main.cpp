@@ -96,6 +96,12 @@ void createDirectory(const std::string& dirName) {
         mkdir(dirName.c_str(), 0777); // Create directory
     }
 }
+// Function to delete a directory if it exists
+    void deleteDirectoryIfExists(const std::string& dirName) {
+        if (std::filesystem::exists(dirName)) {
+            std::filesystem::remove_all(dirName); // Deletes the directory and its contents
+        }
+    }
 
 int main() {
     time_t start_time = time(0);
@@ -113,12 +119,7 @@ int main() {
     const std::string nightFolder = "night";
     const std::string tempFolder = "temp";
 
-    // Function to delete a directory if it exists
-    void deleteDirectoryIfExists(const std::string& dirName) {
-        if (std::filesystem::exists(dirName)) {
-            std::filesystem::remove_all(dirName); // Deletes the directory and its contents
-        }
-    }
+   
 
     // Delete existing directories before creating new ones
     deleteDirectoryIfExists(dayFolder);
@@ -208,7 +209,7 @@ int main() {
                 isDay = true;
                 break;
                 std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
-                return a.greenPercentage > b.greenPercentage 
+                return a.greenPercentage > b.greenPercentage ;
             });
             }
 
@@ -228,7 +229,7 @@ int main() {
     }
 
     // Proceed to sort by unique color percentage only if there are non-zero color counts
-    if (hasNonZeroColors) {
+    if (isDay) {
         std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
             double aUniqueColorPercentage = 100.0 - (a.bluePercentage + a.greenPercentage + a.whitePercentage);
             double bUniqueColorPercentage = 100.0 - (b.bluePercentage + b.greenPercentage + b.whitePercentage);
