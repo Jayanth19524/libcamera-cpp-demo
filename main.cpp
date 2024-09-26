@@ -286,7 +286,7 @@ int main() {
 
         // Release camera and close windows
         cam.stopCamera();
-        cam.resetCamera();
+        
         cv::destroyAllWindows();
     }
 
