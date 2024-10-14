@@ -45,23 +45,12 @@ int main() {
         return -1;
     }
 
-    // Allocate frame buffers
+    // Allocate frame buffers for the selected stream
+    Stream *stream = config->at(0).stream();
     FrameBufferAllocator allocator(camera);
-    if (allocator.allocate(*config) < 0) {
+    if (allocator.allocate(stream) < 0) {
         std::cerr << "Failed to allocate frame buffers." << std::endl;
         return -1;
-    }
-
-    // Create a request to capture frames
-    std::unique_ptr<Request> request = camera->createRequest();
-    if (!request) {
-        std::cerr << "Failed to create request." << std::endl;
-        return -1;
-    }
-
-    // Attach buffers to the request
-    for (const auto &buffer : allocator.buffers()) {
-        request->addBuffer(config->at(0).stream(), buffer.get());
     }
 
     // Start the camera
@@ -72,6 +61,18 @@ int main() {
 
     // Capture frames for a specified duration
     for (int i = 0; i < 10; ++i) {
+        // Create a new request for capturing a frame
+        std::unique_ptr<Request> request = camera->createRequest();
+        if (!request) {
+            std::cerr << "Failed to create request." << std::endl;
+            return -1;
+        }
+
+        // Attach buffers to the request
+        for (const auto &buffer : allocator.buffers(stream)) {
+            request->addBuffer(stream, buffer.get());
+        }
+
         // Queue the request for processing
         if (camera->queueRequest(request.get()) < 0) {
             std::cerr << "Failed to queue request." << std::endl;
@@ -79,36 +80,32 @@ int main() {
         }
 
         // Wait for the request to complete
-        request->wait();
+        camera->requestComplete.connect([&](Request *completedRequest) {
+            if (completedRequest->status() == Request::RequestComplete) {
+                // Get the completed buffer
+                const FrameBuffer *buffer = completedRequest->buffers().begin()->second;
 
-        // Get the captured buffer
-        auto buffers = request->buffers();
-        if (!buffers.empty()) {
-            FrameBuffer *buffer = buffers[0];
+                // Access the frame data
+                const FrameBuffer::Plane &plane = buffer->planes()[0];
+                void *data = mmap(nullptr, plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
+                if (data == MAP_FAILED) {
+                    std::cerr << "Failed to mmap buffer." << std::endl;
+                    return;
+                }
 
-            // Access the frame data
-            void *data = buffer->planes()[0].mem.ptr();
-            cv::Mat img(config->at(0).size.height, config->at(0).size.width, CV_8UC3, data);
+                // Create OpenCV Mat from the data
+                cv::Mat img(config->at(0).size.height, config->at(0).size.width, CV_8UC3, data);
 
-            // Process or display the image
-            cv::imshow("Captured Frame", img);
-            cv::waitKey(1); // Show for a brief moment
-        }
+                // Display the image
+                cv::imshow("Captured Frame", img);
+                cv::waitKey(1);  // Show for a brief moment
+
+                munmap(data, plane.length);  // Unmap the buffer
+            }
+        });
 
         // Sleep for a short duration before capturing the next frame
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-        // Create a new request for the next capture
-        request = camera->createRequest();
-        if (!request) {
-            std::cerr << "Failed to create new request." << std::endl;
-            return -1;
-        }
-
-        // Reattach buffers to the new request
-        for (const auto &buffer : allocator.buffers()) {
-            request->addBuffer(config->at(0).stream(), buffer.get());
-        }
     }
 
     // Stop the camera
