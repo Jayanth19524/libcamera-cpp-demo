@@ -1,61 +1,76 @@
-#include <stdio.h>
-#include <libcamera/libcamera.h>  // Use libcamera for capturing frames
-#include <opencv2/opencv.hpp>     // Use OpenCV for saving frames
-
-// g++ -o video_capture video_capture.cpp -llibcamera -lopencv_core -lopencv_imgcodecs -lopencv_highgui
+#include <iostream>
+#include <libcamera/libcamera.h>
+#include <opencv2/opencv.hpp>
 
 using namespace cv;
+using namespace std;
+using namespace libcamera;
 
 int main() {
-    // Initialize libcamera variables and settings
-    libcamera::CameraManager camera_manager;
-    libcamera::Camera *camera;
-    
-    camera_manager.start();
-    camera = camera_manager.get("0");  // Get the first camera (Arducam 64MP)
-    camera->acquire();
-    
-    // Configure the camera stream settings
-    libcamera::Stream *stream = camera->getStream(libcamera::StreamRole::Viewfinder);
-    
-    // Create a video stream and capture frames
-    camera->configure(stream);
-    camera->start();
-    
-    int frame_count = 0;
-    char filename[100];
-    
-    // Start capturing frames
-    while (true) {
-        libcamera::Request *request = camera->createRequest();
-        if (!request) {
-            printf("Failed to create request.\n");
-            break;
-        }
-        
-        // Capture the frame (you may need to use the camera's buffer system)
-        libcamera::FrameBuffer *buffer = request->getBuffer(stream);
-        
-        // Convert the buffer data to OpenCV Mat (this depends on the format)
-        Mat frame(Size(4056, 3040), CV_8UC3, buffer->data());  // Assuming 64MP resolution
+    // Initialize the CameraManager
+    CameraManager cameraManager;
+    cameraManager.start();
 
-        // Save the frame as an image
-        sprintf(filename, "frame_%d.jpg", frame_count);
-        imwrite(filename, frame);
-        
-        printf("Saved frame %d as %s\n", frame_count, filename);
-        frame_count++;
-        
-        // Break the loop or set conditions for how long to capture frames
-        if (frame_count >= 100) {  // Example: Capture 100 frames
+    // Get the first available camera
+    auto cameras = cameraManager.cameras();
+    if (cameras.empty()) {
+        cerr << "No cameras found!" << endl;
+        return 1;
+    }
+
+    shared_ptr<Camera> camera = cameras[0]; // Use the first camera
+    camera->acquire();
+
+    // Configure the camera
+    CameraConfiguration *config = camera->generateConfiguration({ StreamRole::Viewfinder });
+    if (!config) {
+        cerr << "Failed to generate camera configuration!" << endl;
+        return 1;
+    }
+
+    // Set the desired format and resolution
+    StreamConfiguration &streamConfig = config->at(0);
+    streamConfig.pixelFormat = formats::RGB888; // Use RGB888 format
+    streamConfig.size = Size(4056, 3040); // Set resolution to 64MP
+
+    // Apply the configuration
+    camera->configure(config);
+    camera->start();
+
+    int frameCount = 0;
+    char filename[100];
+
+    while (frameCount < 100) { // Capture 100 frames
+        unique_ptr<Request> request = camera->createRequest();
+        if (!request) {
+            cerr << "Failed to create request." << endl;
             break;
         }
+
+        // Queue the request
+        camera->queueRequest(request.get());
+
+        // Wait for the request to complete
+        if (request->waitForCompletion() != 0) {
+            cerr << "Request failed." << endl;
+            break;
+        }
+
+        // Get the buffer and convert to OpenCV Mat
+        FrameBuffer *buffer = request->findBuffer(camera->streams()[0]);
+        Mat frame(Size(4056, 3040), CV_8UC3, buffer->data());
+        
+        // Save the frame as an image
+        sprintf(filename, "frame_%d.jpg", frameCount);
+        imwrite(filename, frame);
+        cout << "Saved frame " << frameCount << " as " << filename << endl;
+        frameCount++;
     }
-    
+
     // Cleanup
     camera->stop();
     camera->release();
-    camera_manager.stop();
+    cameraManager.stop();
 
     return 0;
 }
