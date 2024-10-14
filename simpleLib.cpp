@@ -2,6 +2,8 @@
 #include <libcamera/libcamera.h>  // Use libcamera for capturing frames
 #include <opencv2/opencv.hpp>     // Use OpenCV for saving frames
 
+// g++ -o video_capture video_capture.cpp -llibcamera -lopencv_core -lopencv_imgcodecs -lopencv_highgui
+
 using namespace cv;
 
 int main() {
