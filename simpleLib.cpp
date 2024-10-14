@@ -1,71 +1,102 @@
 #include <iostream>
 #include <libcamera/libcamera.h>
+#include <libcamera/camera.h>
+#include <libcamera/camera_manager.h>
+#include <libcamera/framebuffer_allocator.h>
+#include <libcamera/request.h>
+#include <libcamera/stream.h>
+#include <libcamera/controls.h>
 #include <opencv2/opencv.hpp>
 
-using namespace std;
 using namespace libcamera;
 
 int main() {
-    // Initialize the CameraManager
+    // Initialize camera manager
     CameraManager cameraManager;
     cameraManager.start();
 
     // Get the first available camera
-    auto cameras = cameraManager.cameras();
-    if (cameras.empty()) {
-        cerr << "No cameras found!" << endl;
-        return 1;
+    std::shared_ptr<Camera> camera = cameraManager.cameras()[0];
+    if (!camera) {
+        std::cerr << "No camera found." << std::endl;
+        return -1;
     }
 
-    shared_ptr<Camera> camera = cameras[0]; // Use the first camera
-    camera->acquire();
-
-    // Configure the camera
-    auto config = camera->generateConfiguration({ StreamRole::Viewfinder });
-    if (!config) {
-        cerr << "Failed to generate camera configuration!" << endl;
-        return 1;
+    // Acquire the camera
+    if (camera->acquire()) {
+        std::cerr << "Failed to acquire camera." << std::endl;
+        return -1;
     }
 
-    // Set the desired format and resolution
-    StreamConfiguration &streamConfig = config->at(0);
-    streamConfig.pixelFormat = formats::RGB888; // Use RGB888 format
-    libcamera::Size cameraSize(4056, 3040); // Use libcamera::Size
-    streamConfig.size = cameraSize; // Set resolution for libcamera
+    // Configure the camera for still capture
+    CameraConfiguration config = camera->generateConfiguration({StreamRole::StillCapture});
+    config.at(0).size = Size(4056, 3040);  // Set desired resolution
+    config.at(0).pixelFormat = formats::RGB888;  // Set pixel format
+    config.at(0).bufferCount = 4;  // Number of buffers
 
-    // Apply the configuration
-    camera->configure(config);
-    camera->start();
+    // Validate the configuration
+    if (camera->configure(&config) < 0) {
+        std::cerr << "Failed to configure camera." << std::endl;
+        return -1;
+    }
 
-    int frameCount = 0;
-    char filename[100];
+    // Start the camera
+    if (camera->start() < 0) {
+        std::cerr << "Failed to start camera." << std::endl;
+        return -1;
+    }
 
-    while (frameCount < 100) { // Capture 100 frames
-        unique_ptr<Request> request = camera->createRequest();
-        if (!request) {
-            cerr << "Failed to create request." << endl;
-            break;
+    // Allocate frame buffers
+    FrameBufferAllocator allocator(camera.get());
+    if (allocator.allocate(config.at(0).stream()) < 0) {
+        std::cerr << "Failed to allocate buffers." << std::endl;
+        return -1;
+    }
+
+    // Create requests
+    std::vector<std::unique_ptr<Request>> requests;
+    for (const auto &buffer : allocator.buffers(config.at(0).stream())) {
+        std::unique_ptr<Request> request = camera->createRequest();
+        request->addBuffer(config.at(0).stream(), buffer.get());
+        requests.push_back(std::move(request));
+    }
+
+    // Capture frames
+    for (int i = 0; i < 10; ++i) {
+        for (const auto &request : requests) {
+            if (camera->queueRequest(request.get()) < 0) {
+                std::cerr << "Failed to queue request." << std::endl;
+                return -1;
+            }
         }
 
-        // Queue the request
-        camera->queueRequest(request.get());
+        // Process completed requests
+        for (const auto &request : requests) {
+            camera->requestCompleted.connect(
+                [request = request.get()](Request *completedRequest) {
+                    if (completedRequest->status() == Request::RequestCancelled) return;
 
-        // Wait for the request to complete
-        // (You may need to implement a callback for request completion)
+                    const Request::BufferMap &buffers = completedRequest->buffers();
+                    for (const auto &bufferPair : buffers) {
+                        FrameBuffer *buffer = bufferPair.second;
+                        void *data = buffer->planes()[0].mem.ptr();
+                        int length = buffer->planes()[0].length;
 
-        // Get the buffer and convert to OpenCV Mat
-        FrameBuffer *buffer = request->findBuffer(*camera->streams().begin());
-        auto mappedBuffer = buffer->map();
-        Mat frame(cv::Size(4056, 3040), CV_8UC3, mappedBuffer->data());
+                        // Create OpenCV Mat from the frame data
+                        cv::Mat frame(cv::Size(4056, 3040), CV_8UC3, data);
 
-        // Save the frame as an image
-        sprintf(filename, "frame_%d.jpg", frameCount);
-        imwrite(filename, frame);
-        cout << "Saved frame " << frameCount << " as " << filename << endl;
-        frameCount++;
+                        // Display the frame
+                        cv::imshow("Frame", frame);
+                        cv::waitKey(100); // Display for 100ms
+                    }
+                });
+
+            // Wait for some time to allow frames to be displayed
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
     }
 
-    // Cleanup
+    // Stop and release the camera
     camera->stop();
     camera->release();
     cameraManager.stop();
