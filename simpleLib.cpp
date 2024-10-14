@@ -28,6 +28,10 @@ int calculateWhitePixels(const cv::Mat& frame) {
 
 int main() {
     // Open the camera feed using OpenCV directly from /dev/video0
+    system("libcamera-vid -t 10000 --inline --output live_feed.h264 &");
+
+    // Wait for the camera feed to initialize
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     cv::VideoCapture cap("/dev/video0");
     if (!cap.isOpened()) {
         std::cerr << "Error: Could not open the camera feed." << std::endl;
