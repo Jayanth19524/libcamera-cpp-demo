@@ -2,7 +2,6 @@
 #include <libcamera/libcamera.h>
 #include <opencv2/opencv.hpp>
 
-using namespace cv;
 using namespace std;
 using namespace libcamera;
 
@@ -22,7 +21,7 @@ int main() {
     camera->acquire();
 
     // Configure the camera
-    CameraConfiguration *config = camera->generateConfiguration({ StreamRole::Viewfinder });
+    auto config = camera->generateConfiguration({ StreamRole::Viewfinder });
     if (!config) {
         cerr << "Failed to generate camera configuration!" << endl;
         return 1;
@@ -31,7 +30,8 @@ int main() {
     // Set the desired format and resolution
     StreamConfiguration &streamConfig = config->at(0);
     streamConfig.pixelFormat = formats::RGB888; // Use RGB888 format
-    streamConfig.size = Size(4056, 3040); // Set resolution to 64MP
+    libcamera::Size cameraSize(4056, 3040); // Use libcamera::Size
+    streamConfig.size = cameraSize; // Set resolution for libcamera
 
     // Apply the configuration
     camera->configure(config);
@@ -51,15 +51,13 @@ int main() {
         camera->queueRequest(request.get());
 
         // Wait for the request to complete
-        if (request->waitForCompletion() != 0) {
-            cerr << "Request failed." << endl;
-            break;
-        }
+        // (You may need to implement a callback for request completion)
 
         // Get the buffer and convert to OpenCV Mat
-        FrameBuffer *buffer = request->findBuffer(camera->streams()[0]);
-        Mat frame(Size(4056, 3040), CV_8UC3, buffer->data());
-        
+        FrameBuffer *buffer = request->findBuffer(*camera->streams().begin());
+        auto mappedBuffer = buffer->map();
+        Mat frame(cv::Size(4056, 3040), CV_8UC3, mappedBuffer->data());
+
         // Save the frame as an image
         sprintf(filename, "frame_%d.jpg", frameCount);
         imwrite(filename, frame);
