@@ -7,6 +7,8 @@
 #include <libcamera/stream.h>
 #include <libcamera/controls.h>
 #include <opencv2/opencv.hpp>
+#include <thread>
+#include <chrono>
 
 using namespace libcamera;
 
@@ -23,13 +25,16 @@ int main() {
     }
 
     // Acquire the camera
-    if (camera->acquire()) {
+    if (camera->acquire() < 0) {
         std::cerr << "Failed to acquire camera." << std::endl;
         return -1;
     }
 
     // Configure the camera for still capture
-    CameraConfiguration config = camera->generateConfiguration({StreamRole::StillCapture});
+    std::vector<StreamRole> roles = {StreamRole::StillCapture};
+    CameraConfiguration config = camera->generateConfiguration(roles);
+    
+    // Set desired resolution and pixel format
     config.at(0).size = Size(4056, 3040);  // Set desired resolution
     config.at(0).pixelFormat = formats::RGB888;  // Set pixel format
     config.at(0).bufferCount = 4;  // Number of buffers
@@ -70,7 +75,7 @@ int main() {
             }
         }
 
-        // Process completed requests
+        // Wait for completed requests
         for (const auto &request : requests) {
             camera->requestCompleted.connect(
                 [request = request.get()](Request *completedRequest) {
@@ -80,8 +85,7 @@ int main() {
                     for (const auto &bufferPair : buffers) {
                         FrameBuffer *buffer = bufferPair.second;
                         void *data = buffer->planes()[0].mem.ptr();
-                        int length = buffer->planes()[0].length;
-
+                        
                         // Create OpenCV Mat from the frame data
                         cv::Mat frame(cv::Size(4056, 3040), CV_8UC3, data);
 
@@ -89,7 +93,8 @@ int main() {
                         cv::imshow("Frame", frame);
                         cv::waitKey(100); // Display for 100ms
                     }
-                });
+                }
+            );
 
             // Wait for some time to allow frames to be displayed
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
