@@ -45,65 +45,75 @@ int main() {
         return -1;
     }
 
+    // Allocate frame buffers
+    FrameBufferAllocator allocator(camera);
+    if (allocator.allocate(*config) < 0) {
+        std::cerr << "Failed to allocate frame buffers." << std::endl;
+        return -1;
+    }
+
+    // Create a request to capture frames
+    std::unique_ptr<Request> request = camera->createRequest();
+    if (!request) {
+        std::cerr << "Failed to create request." << std::endl;
+        return -1;
+    }
+
+    // Attach buffers to the request
+    for (const auto &buffer : allocator.buffers()) {
+        request->addBuffer(config->at(0).stream(), buffer.get());
+    }
+
     // Start the camera
     if (camera->start() < 0) {
         std::cerr << "Failed to start camera." << std::endl;
         return -1;
     }
 
-    // Allocate frame buffers
-    FrameBufferAllocator allocator(camera.get());
-    if (allocator.allocate(config->at(0).stream()) < 0) {
-        std::cerr << "Failed to allocate buffers." << std::endl;
-        return -1;
-    }
-
-    // Create requests
-    std::vector<std::shared_ptr<Request>> requests;
-    for (const auto &buffer : allocator.buffers(config->at(0).stream())) {
-        std::shared_ptr<Request> request = camera->createRequest();
-        request->addBuffer(config->at(0).stream(), buffer.get());
-        requests.push_back(request);
-    }
-
-    // Capture frames
+    // Capture frames for a specified duration
     for (int i = 0; i < 10; ++i) {
-        for (const auto &request : requests) {
-            if (camera->queueRequest(request.get()) < 0) {
-                std::cerr << "Failed to queue request." << std::endl;
-                return -1;
-            }
+        // Queue the request for processing
+        if (camera->queueRequest(request.get()) < 0) {
+            std::cerr << "Failed to queue request." << std::endl;
+            return -1;
         }
 
-        // Wait for completed requests
-        for (const auto &request : requests) {
-            camera->requestCompleted.connect(
-                [request](Request *completedRequest) {
-                    if (completedRequest->status() != Request::RequestCancelled) {
-                        const Request::BufferMap &buffers = completedRequest->buffers();
-                        for (const auto &bufferPair : buffers) {
-                            FrameBuffer *buffer = bufferPair.second;
-                            void *data = buffer->planes()[0].mem.ptr();
+        // Wait for the request to complete
+        request->wait();
 
-                            // Create OpenCV Mat from the frame data
-                            cv::Mat frame(cv::Size(4056, 3040), CV_8UC3, data);
+        // Get the captured buffer
+        auto buffers = request->buffers();
+        if (!buffers.empty()) {
+            FrameBuffer *buffer = buffers[0];
 
-                            // Display the frame
-                            cv::imshow("Frame", frame);
-                            cv::waitKey(100); // Display for 100ms
-                        }
-                    }
-                });
+            // Access the frame data
+            void *data = buffer->planes()[0].mem.ptr();
+            cv::Mat img(config->at(0).size.height, config->at(0).size.width, CV_8UC3, data);
 
-            // Wait for some time to allow frames to be displayed
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            // Process or display the image
+            cv::imshow("Captured Frame", img);
+            cv::waitKey(1); // Show for a brief moment
+        }
+
+        // Sleep for a short duration before capturing the next frame
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+        // Create a new request for the next capture
+        request = camera->createRequest();
+        if (!request) {
+            std::cerr << "Failed to create new request." << std::endl;
+            return -1;
+        }
+
+        // Reattach buffers to the new request
+        for (const auto &buffer : allocator.buffers()) {
+            request->addBuffer(config->at(0).stream(), buffer.get());
         }
     }
 
-    // Stop and release the camera
+    // Stop the camera
     camera->stop();
     camera->release();
-    cameraManager.stop();
 
     return 0;
 }
