@@ -4,104 +4,58 @@
 #include <chrono>
 #include <vector>
 
-struct FrameData {
-    cv::Mat frame;
-    int whitePixels; // A metric for how much white is in the frame
-};
-
-// Function to calculate the amount of white pixels in a frame
-int calculateWhitePixels(const cv::Mat& frame) {
-    int whitePixelCount = 0;
-    
-    for (int y = 0; y < frame.rows; ++y) {
-        for (int x = 0; x < frame.cols; ++x) {
-            cv::Vec3b pixel = frame.at<cv::Vec3b>(y, x);
-            // White is considered if all RGB components are high (near 255)
-            if (pixel[0] > 200 && pixel[1] > 200 && pixel[2] > 200) {
-                whitePixelCount++;
-            }
-        }
-    }
-    
-    return whitePixelCount;
+// Start recording video in the background
+void startVideoRecording() {
+    system("libcamera-vid -t 1800000 --inline --output live_feed.h264 &");
 }
 
-int main() {
-    // // Open the camera feed using OpenCV directly from /dev/video0
-    // system("libcamera-vid -t 10000 --inline --output live_feed.h264 &");
-
-    // // Wait for the camera feed to initialize
-    // std::this_thread::sleep_for(std::chrono::seconds(1));
-    cv::VideoCapture cap("/dev/video0");
+// Function to capture frames using OpenCV
+void captureFrames() {
+    cv::VideoCapture cap("/dev/video0"); // Ensure this matches your camera device
     if (!cap.isOpened()) {
         std::cerr << "Error: Could not open the camera feed." << std::endl;
-        return -1;
+        return;
     }
 
-    int frameCount = 0;
-    int secondsToCapture = 10;  // Capture for 10 seconds
-    int fps = 1;  // Capture 1 frame per second
-    int totalFrames = secondsToCapture * fps;
-
-    std::vector<FrameData> topFrames(5);  // Store top 5 frames
-
     cv::Mat frame;
-    while (frameCount < totalFrames) {
-        // Capture a frame
-        cap >> frame;
+    while (true) {
+        cap >> frame; // Capture a frame
         if (frame.empty()) {
             std::cerr << "Error: Could not grab a frame." << std::endl;
             break;
         }
 
-        // Analyze the frame for the number of white pixels (clouds)
-        int whitePixelCount = calculateWhitePixels(frame);
-
-        // Determine if this frame should be added to the top 5 frames
-        int maxWhiteIndex = -1;
-        int maxWhiteValue = -1;
-        for (int i = 0; i < topFrames.size(); i++) {
-            if (topFrames[i].whitePixels > maxWhiteValue) {
-                maxWhiteValue = topFrames[i].whitePixels;
-                maxWhiteIndex = i;
-            }
-        }
-
-        // If the current frame has fewer white pixels, replace the worst frame
-        if (whitePixelCount < maxWhiteValue || frameCount < 5) {
-            if (frameCount >= 5) {
-                // We replace the worst frame
-                topFrames[maxWhiteIndex] = {frame.clone(), whitePixelCount};
-            } else {
-                // Initially populate the top 5 list
-                topFrames[frameCount] = {frame.clone(), whitePixelCount};
-            }
-        }
-
         // Display the current frame
         cv::imshow("Camera Feed", frame);
-        
-        // Wait for 1 second before capturing the next frame
-        std::this_thread::sleep_for(std::chrono::seconds(1));
 
+        // Logic to save frames if needed
+        // For example, save every 10th frame
+        static int frameCount = 0;
+        if (frameCount % 10 == 0) {
+            std::string filename = "frame_" + std::to_string(frameCount) + ".jpg";
+            cv::imwrite(filename, frame);
+        }
+        frameCount++;
+
+        // Break the loop on 'q' key press
         if (cv::waitKey(1) == 'q') {
             break;
         }
-
-        frameCount++;
     }
 
-    // Save the top 5 frames to disk
-    for (int i = 0; i < topFrames.size(); ++i) {
-        if (!topFrames[i].frame.empty()) {
-            std::string filename = "best_frame_" + std::to_string(i) + ".jpg";
-            cv::imwrite(filename, topFrames[i].frame);
-        }
-    }
-
-    // Clean up
     cap.release();
     cv::destroyAllWindows();
+}
+
+int main() {
+    // Start video recording
+    startVideoRecording();
+
+    // Allow a moment for the recording to initialize
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    // Start capturing frames
+    captureFrames();
 
     return 0;
 }
