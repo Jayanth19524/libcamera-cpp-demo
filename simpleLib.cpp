@@ -5,7 +5,6 @@
 #include <libcamera/framebuffer_allocator.h>
 #include <libcamera/request.h>
 #include <libcamera/stream.h>
-#include <libcamera/stream_roles.h>
 #include <chrono>
 #include <thread>
 #include <memory>
