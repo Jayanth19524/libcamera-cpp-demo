@@ -13,7 +13,7 @@
 using namespace libcamera;
 
 int main() {
-    // Initialize camera manager
+    // Initialize the camera manager
     CameraManager cameraManager;
     cameraManager.start();
 
@@ -32,15 +32,15 @@ int main() {
 
     // Configure the camera for still capture
     std::vector<StreamRole> roles = {StreamRole::StillCapture};
-    CameraConfiguration config = camera->generateConfiguration(roles);
-    
+    std::unique_ptr<CameraConfiguration> config = camera->generateConfiguration(roles);
+
     // Set desired resolution and pixel format
-    config.at(0).size = Size(4056, 3040);  // Set desired resolution
-    config.at(0).pixelFormat = formats::RGB888;  // Set pixel format
-    config.at(0).bufferCount = 4;  // Number of buffers
+    config->at(0).size = Size(4056, 3040);  // Set desired resolution
+    config->at(0).pixelFormat = formats::RGB888;  // Set pixel format
+    config->at(0).bufferCount = 4;  // Number of buffers
 
     // Validate the configuration
-    if (camera->configure(&config) < 0) {
+    if (camera->configure(config.get()) < 0) {
         std::cerr << "Failed to configure camera." << std::endl;
         return -1;
     }
@@ -53,17 +53,17 @@ int main() {
 
     // Allocate frame buffers
     FrameBufferAllocator allocator(camera.get());
-    if (allocator.allocate(config.at(0).stream()) < 0) {
+    if (allocator.allocate(config->at(0).stream()) < 0) {
         std::cerr << "Failed to allocate buffers." << std::endl;
         return -1;
     }
 
     // Create requests
-    std::vector<std::unique_ptr<Request>> requests;
-    for (const auto &buffer : allocator.buffers(config.at(0).stream())) {
-        std::unique_ptr<Request> request = camera->createRequest();
-        request->addBuffer(config.at(0).stream(), buffer.get());
-        requests.push_back(std::move(request));
+    std::vector<std::shared_ptr<Request>> requests;
+    for (const auto &buffer : allocator.buffers(config->at(0).stream())) {
+        std::shared_ptr<Request> request = camera->createRequest();
+        request->addBuffer(config->at(0).stream(), buffer.get());
+        requests.push_back(request);
     }
 
     // Capture frames
@@ -78,23 +78,22 @@ int main() {
         // Wait for completed requests
         for (const auto &request : requests) {
             camera->requestCompleted.connect(
-                [request = request.get()](Request *completedRequest) {
-                    if (completedRequest->status() == Request::RequestCancelled) return;
+                [request](Request *completedRequest) {
+                    if (completedRequest->status() != Request::RequestCancelled) {
+                        const Request::BufferMap &buffers = completedRequest->buffers();
+                        for (const auto &bufferPair : buffers) {
+                            FrameBuffer *buffer = bufferPair.second;
+                            void *data = buffer->planes()[0].mem.ptr();
 
-                    const Request::BufferMap &buffers = completedRequest->buffers();
-                    for (const auto &bufferPair : buffers) {
-                        FrameBuffer *buffer = bufferPair.second;
-                        void *data = buffer->planes()[0].mem.ptr();
-                        
-                        // Create OpenCV Mat from the frame data
-                        cv::Mat frame(cv::Size(4056, 3040), CV_8UC3, data);
+                            // Create OpenCV Mat from the frame data
+                            cv::Mat frame(cv::Size(4056, 3040), CV_8UC3, data);
 
-                        // Display the frame
-                        cv::imshow("Frame", frame);
-                        cv::waitKey(100); // Display for 100ms
+                            // Display the frame
+                            cv::imshow("Frame", frame);
+                            cv::waitKey(100); // Display for 100ms
+                        }
                     }
-                }
-            );
+                });
 
             // Wait for some time to allow frames to be displayed
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
