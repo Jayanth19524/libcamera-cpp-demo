@@ -184,7 +184,7 @@ int main() {
             std::string tempFilename = tempFolder + "/" + data.filename;
             // losy encoding 
             std::vector<int> compression_params;
-            compression_params.push_back(cv::IMWRITE_JPG_QUALITY);
+            compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
             compression_params.push_back(1); // Set quality from 0 to 100 (higher is less compressed)
             // Save the current frame as an image file with lossy compression
             cv::imwrite(tempFilename, im, compression_params); 
