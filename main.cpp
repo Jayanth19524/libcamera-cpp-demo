@@ -250,11 +250,11 @@ int main() {
 
             // Save the frame image in the temp folder
             std::string tempFilename = tempFolder + "/" + data.filename;
-            cv::imwrite(tempFilename, im, {cv::IMWRITE_JPEG_QUALITY, 10}); // Set quality to 10
+            cv::imwrite(tempFilename, im); // Set quality to 10
 
             // Compress the saved image
             std::string compressedFilename = compressFolder + "/compressed_" + data.filename;
-            compress_image(tempFilename, compressedFilename, 5,10); // Set quality to 50 for compression
+            compress_image(tempFilename, compressedFilename, 10,5); // Set quality to 50 for compression
 
             frame_count++;
             cam.returnFrameBuffer(frameData);
