@@ -70,6 +70,10 @@ void createDirectory(const std::string& dirName) {
         mkdir(dirName.c_str(), 0777); // Create directory
     }
 }
+void deleteDirectoryIfExists(const std::string& dirName) {
+    std::string command = "rm -rf " + dirName; // Unix command to remove directory
+    system(command.c_str()); // Execute the command
+}
 
 int main() {
     time_t start_time = time(0);
