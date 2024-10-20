@@ -71,6 +71,23 @@ void createDirectory(const std::string& dirName) {
     }
 }
 
+void saveImageWithCompression(const std::string& filename, const Mat& image, int downsampleFactor, int quality) {
+    // Downsample the image
+    Mat downsampledImage;
+    Size newSize(image.cols / downsampleFactor, image.rows / downsampleFactor);
+    resize(image, downsampledImage, newSize); // Downsample the image
+
+    // Set compression parameters
+    std::vector<int> compressionParams;
+    compressionParams.push_back(cv::IMWRITE_JPEG_QUALITY);
+    compressionParams.push_back(quality); // Set quality
+
+    // Save the downsampled image
+    imwrite(filename, downsampledImage, compressionParams);
+}
+
+
+
 int main() {
     time_t start_time = time(0);
     int frame_count = 0;
@@ -138,18 +155,10 @@ int main() {
 
             // Save the frame image as well
             // Save the current frame as an image file with compression
-                std::vector<int> compression_params;
-                compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
-                compression_params.push_back(1); // Set quality to 1
-                compression_params.push_back(cv::IMWRITE_JPEG_OPTIMIZE);
-                compression_params.push_back(1); // Enable optimization
-                // Set the downsampling (assuming you meant to adjust quality)
-                compression_params.push_back(cv::IMWRITE_JPEG_DCT);
-                compression_params.push_back(5); // Downsampling (if applicable)
+               
 
                 // Save the current frame as an image file with specified compression parameters
-                imwrite(data.filename, im, compression_params);
-
+                saveImageWithCompression(data.filename, im, 5, 1);
 
             frame_count++;
             cam.returnFrameBuffer(frameData);
