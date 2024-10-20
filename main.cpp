@@ -71,23 +71,6 @@ void createDirectory(const std::string& dirName) {
     }
 }
 
-void saveImageWithCompression(const std::string& filename, const Mat& image, int downsampleFactor, int quality) {
-    // Downsample the image
-    Mat downsampledImage;
-    Size newSize(image.cols / downsampleFactor, image.rows / downsampleFactor);
-    resize(image, downsampledImage, newSize); // Downsample the image
-
-    // Set compression parameters
-    std::vector<int> compressionParams;
-    compressionParams.push_back(cv::IMWRITE_JPEG_QUALITY);
-    compressionParams.push_back(quality); // Set quality
-
-    // Save the downsampled image
-    imwrite(filename, downsampledImage, compressionParams);
-}
-
-
-
 int main() {
     time_t start_time = time(0);
     int frame_count = 0;
@@ -100,7 +83,7 @@ int main() {
     const std::string videoFile = "output_video.mp4"; // Output video file
     const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
     const std::string dayFolder = "day"; // Directory for day frames
-    
+    const std::string nightFolder = "day"; // Directory for day frames
     // Create the "day" directory
     createDirectory(dayFolder);
 
@@ -154,11 +137,7 @@ int main() {
             frameDataList.push_back(data); // Store frame data in a list
 
             // Save the frame image as well
-            // Save the current frame as an image file with compression
-               
-
-                // Save the current frame as an image file with specified compression parameters
-                saveImageWithCompression(data.filename, im, 5, 1);
+            imwrite(data.filename, im); // Save the current frame as an image file
 
             frame_count++;
             cam.returnFrameBuffer(frameData);
