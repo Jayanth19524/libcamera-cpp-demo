@@ -12,8 +12,11 @@
 #include <math.h>
 
 using namespace cv;
+#include <iostream>
+#include <string>
 
-extern "C" void compress_image(const char *input_filename, const char *output_filename, int quality, int downsample_factor) {
+
+void compress_image(const std::string &input_filename, const std::string &output_filename, int quality, int downsample_factor) {
     struct jpeg_decompress_struct cinfo;
     struct jpeg_compress_struct cjpeg;
     struct jpeg_error_mgr jerr;
@@ -23,7 +26,7 @@ extern "C" void compress_image(const char *input_filename, const char *output_fi
     cjpeg.err = jpeg_std_error(&jerr);
 
     // Open the input file
-    FILE *infile = fopen(input_filename, "rb");
+    FILE *infile = fopen(input_filename.c_str(), "rb");
     if (!infile) {
         std::cerr << "Cannot open " << input_filename << std::endl;
         return;
@@ -39,7 +42,7 @@ extern "C" void compress_image(const char *input_filename, const char *output_fi
 
     // Set up the compression
     jpeg_create_compress(&cjpeg);
-    FILE *outfile = fopen(output_filename, "wb");
+    FILE *outfile = fopen(output_filename.c_str(), "wb");
     if (!outfile) {
         std::cerr << "Cannot open " << output_filename << std::endl;
         fclose(infile);
@@ -101,6 +104,7 @@ extern "C" void compress_image(const char *input_filename, const char *output_fi
 
     std::cout << "Image compressed successfully to " << output_filename << std::endl;
 }
+
 
 
 // Struct to hold frame data
