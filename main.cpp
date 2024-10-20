@@ -45,6 +45,7 @@ void compress_image(const std::string &input_filename, const std::string &output
     FILE *outfile = fopen(output_filename.c_str(), "wb");
     if (!outfile) {
         std::cerr << "Cannot open " << output_filename << std::endl;
+        jpeg_destroy_decompress(&cinfo);
         fclose(infile);
         return;
     }
@@ -69,7 +70,7 @@ void compress_image(const std::string &input_filename, const std::string &output
     // Loop through the scanlines
     while (cjpeg.next_scanline < cjpeg.image_height) {
         // Allocate a buffer for one scanline
-        row_pointer[0] = (JSAMPROW) malloc(cinfo.output_width * cinfo.output_components / (downsample_factor));
+        row_pointer[0] = (JSAMPROW) malloc(cinfo.output_width * cinfo.output_components);
         if (row_pointer[0] == NULL) {
             std::cerr << "Memory allocation failed" << std::endl;
             break; // Exit if allocation fails
@@ -104,8 +105,6 @@ void compress_image(const std::string &input_filename, const std::string &output
 
     std::cout << "Image compressed successfully to " << output_filename << std::endl;
 }
-
-
 
 // Struct to hold frame data
 struct FrameData {
@@ -255,7 +254,7 @@ int main() {
 
             // Compress the saved image
             std::string compressedFilename = compressFolder + "/compressed_" + data.filename;
-            compress_image(tempFilename, compressedFilename, 50); // Set quality to 50 for compression
+            compress_image(tempFilename, compressedFilename, 5,10); // Set quality to 50 for compression
 
             frame_count++;
             cam.returnFrameBuffer(frameData);
