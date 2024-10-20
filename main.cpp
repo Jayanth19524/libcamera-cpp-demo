@@ -152,7 +152,7 @@ int main() {
             frameDataList.push_back(data); // Store frame data in a list
 
             // Save the frame image as well
-            cv::imwrite(data.filename, im, {cv::IMWRITE_JPEG_QUALITY, 10}); // Set quality to 10
+            cv::imwrite(data.filename, im, {cv::IMWRITE_JPEG_QUALITY, 1}); // Set quality to 10
 ; // Save the current frame as an image file
 
             frame_count++;
