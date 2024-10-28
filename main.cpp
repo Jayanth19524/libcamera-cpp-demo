@@ -113,6 +113,7 @@ int main(int argc, char* argv[]) {
     controls_.set(controls::Contrast, 1.5);
     controls_.set(controls::ExposureTime, 20000);
     cam.set(controls_);
+    int totalPixels ;
 
     if (!ret) {
         bool flag;
@@ -149,6 +150,8 @@ int main(int argc, char* argv[]) {
             calculateColorIntensity(im, data);
             frameDataList.push_back(data); // Store frame data in a list
             std::string tempFilename = tempFolder + "/" + data.filename;
+            totalPixels = im.rows * im.cols;
+
             // Save the frame image as well
             imwrite(tempFilename, im); // Save the current frame as an image file
 
@@ -171,7 +174,8 @@ int main(int argc, char* argv[]) {
         // Evaluate Day 1 --- Criteria blue green 
         if (!isDay) {
             for (const FrameData& frame : frameDataList) {
-                if (frame.bluePercentage > 30.0) {
+                 double bluePercentage = (static_cast<double>(data.blueCount) / totalPixels) * 100;
+                if (bluePercentage > 30.0) {
                     isDay = true;
                     dayFrames.push_back(frame); 
                 }
