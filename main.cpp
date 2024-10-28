@@ -174,7 +174,7 @@ int main(int argc, char* argv[]) {
         // Evaluate Day 1 --- Criteria blue green 
         if (!isDay) {
             for (const FrameData& frame : frameDataList) {
-                 double bluePercentage = (static_cast<double>(data.blueCount) / totalPixels) * 100;
+                 double bluePercentage = (static_cast<double>(frame.blueCount) / totalPixels) * 100;
                 if (bluePercentage > 30.0) {
                     isDay = true;
                     dayFrames.push_back(frame); 
