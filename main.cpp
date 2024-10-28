@@ -71,7 +71,7 @@ void createDirectory(const std::string& dirName) {
     }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     time_t start_time = time(0);
     int frame_count = 0;
     LibCamera cam;
@@ -82,10 +82,23 @@ int main() {
     const int capture_duration = 30; // Capture for 30 seconds
     const std::string videoFile = "output_video.mp4"; // Output video file
     const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
-    const std::string dayFolder = "day"; // Directory for day frames
+    const std::string dayFolder = "day";
+    const std::string nightFolder = "night";
+    const std::string tempFolder = "temp";
+    const std::string otherFolder = "other";
     
     // Create the "day" directory
-    createDirectory(dayFolder);
+      createDirectory(dayFolder);
+    createDirectory(nightFolder);
+    createDirectory(tempFolder);
+    
+
+    bool createOthersFolder = false;
+    if (argc > 1 && std::string(argv[1]) == "1") {
+        createOthersFolder = true;
+        createDirectory(otherFolder);
+    }
+    
 
     // Create a window for displaying the camera feed
     cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
@@ -135,9 +148,9 @@ int main() {
             // Calculate color intensities
             calculateColorIntensity(im, data);
             frameDataList.push_back(data); // Store frame data in a list
-
+            std::string tempFilename = tempFolder + "/" + data.filename;
             // Save the frame image as well
-            imwrite(data.filename, im); // Save the current frame as an image file
+            imwrite(tempFilename, im); // Save the current frame as an image file
 
             frame_count++;
             cam.returnFrameBuffer(frameData);
@@ -150,6 +163,23 @@ int main() {
         std::sort(frameDataList.begin(), frameDataList.end(), [](const FrameData& a, const FrameData& b) {
             return a.blueCount > b.blueCount; // Sort in descending order
         });
+
+        bool isDay = false;
+
+        std::vector<FrameData> dayFrames;
+
+        // Evaluate Day 1 --- Criteria blue green 
+        if (!isDay) {
+            for (const FrameData& frame : frameDataList) {
+                if (frame.bluePercentage > 30.0) {
+                    isDay = true;
+                    dayFrames.push_back(frame); 
+                }
+            } 
+        std::sort(dayFrames.begin(), dayFrames.end(), [](const FrameData& a, const FrameData& b) -> bool {
+            return a.greenCount > b.blueCount;
+        });
+       }
 
         // Determine if it's day or night based on black pixels
         const int totalFrames = frameDataList.size();
