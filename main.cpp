@@ -108,20 +108,13 @@ int main() {
     const int capture_duration = 30; // Capture for 30 seconds
     const std::string videoFile = "output_video.mp4"; // Output video file
     const std::string binaryFile = "frame_data.bin"; // Binary file for frame data
-    const std::string dayFolder = "day";
+    const std::string dayFolder = "day"; // Directory for day frames
     const std::string nightFolder = "night";
-    const std::string tempFolder = "temp";
-    const std::string otherFolder = "other";
     
     // Create the "day" directory
     createDirectory(dayFolder);
     createDirectory(nightFolder);
-    createDirectory(tempFolder);
-    createDirectory(otherFolder);
-
     // Create a window for displaying the camera feed
-    cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
-    cv::resizeWindow("libcamera-demo", width, height); 
 
     int ret = cam.initCamera();
     cam.configureStill(width, height, formats::RGB888, 1, 0);
@@ -149,7 +142,6 @@ int main() {
                 continue;
 
             Mat im(height, width, CV_8UC3, frameData.imageData, stride);
-            imshow("libcamera-demo", im);
             key = waitKey(1);
             if (key == 'q') {
                 break;
