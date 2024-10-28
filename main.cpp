@@ -18,12 +18,12 @@ struct FrameData {
     int blackCount;
     int whiteCount;
     int brownCount;
-    double bluePercentage;
-    double greenPercentage;
-    double yellowPercentage;
-    double blackPercentage;
-    double whitePercentage;
-    double brownPercentage;
+    int bluePercentage;
+    int greenPercentage;
+    int yellowPercentage;
+    int blackPercentage;
+    int whitePercentage;
+    int brownPercentage;
     time_t timestamp;
     char filename[50];
 };
@@ -82,12 +82,12 @@ void calculateColorIntensity(const Mat& image, FrameData& data) {
     int totalPixels = image.rows * image.cols;
 
     // Calculate color percentages
-    data.bluePercentage = (static_cast<double>(data.blueCount) / totalPixels) * 100;
-    data.greenPercentage = (static_cast<double>(data.greenCount) / totalPixels) * 100;
-    data.yellowPercentage = (static_cast<double>(data.yellowCount) / totalPixels) * 100;
-    data.blackPercentage = (static_cast<double>(data.blackCount) / totalPixels) * 100;
-    data.whitePercentage = (static_cast<double>(data.whiteCount) / totalPixels) * 100;
-    data.brownPercentage = (static_cast<double>(data.brownCount) / totalPixels) * 100;
+    data.bluePercentage = (static_cast<int>(data.blueCount) / totalPixels) * 100;
+    data.greenPercentage = (static_cast<int>(data.greenCount) / totalPixels) * 100;
+    data.yellowPercentage = (static_cast<int>(data.yellowCount) / totalPixels) * 100;
+    data.blackPercentage = (static_cast<int>(data.blackCount) / totalPixels) * 100;
+    data.whitePercentage = (static_cast<int>(data.whiteCount) / totalPixels) * 100;
+    data.brownPercentage = (static_cast<int>(data.brownCount) / totalPixels) * 100;
 }
 
 // Function to create a directory if it does not exist
